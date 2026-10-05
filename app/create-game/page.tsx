@@ -4,5 +4,6 @@ export default async function CreateGamePage({ searchParams }: PageProps<"/creat
   const params = await searchParams;
   const mode = params.mode === "multiplayer" ? "multiplayer" : "single_player";
   const title = typeof params.title === "string" ? params.title.slice(0, 120) : "My brilliant game";
-  return <GameCreator mode={mode} title={title} />;
+  const roomId = typeof params.room === "string" ? params.room : undefined;
+  return <GameCreator mode={mode} title={title} roomId={roomId} />;
 }
