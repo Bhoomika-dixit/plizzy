@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Design references and generated mockups
+/resources/*
+!/resources/plizzy-penguin-auth.png
+!/resources/google-provider-icon.png
+!/resources/apple-provider-icon.png

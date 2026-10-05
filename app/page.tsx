@@ -1,65 +1,70 @@
+"use client";
+
 import Image from "next/image";
+import { FormEvent, useState } from "react";
+import appleIcon from "../resources/apple-provider-icon.png";
+import googleIcon from "../resources/google-provider-icon.png";
+import penguinHero from "../resources/plizzy-penguin-auth.png";
+
+type Screen = "welcome" | "sign-in" | "sign-up" | "hello";
+
+function nameFromEmail(email: string) {
+  return email.split("@")[0].replace(/[._-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()) || "Player";
+}
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+  const [screen, setScreen] = useState<Screen>("welcome");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  function goTo(next: Screen) { setError(""); setNotice(""); setScreen(next); }
+  function finishSignIn(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setName(nameFromEmail(String(new FormData(event.currentTarget).get("email") ?? ""))); goTo("hello"); }
+  function finishSignUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (form.get("password") !== form.get("confirmPassword")) { setError("Passwords do not match."); return; }
+    setName(String(form.get("name") ?? "").trim());
+    setScreen("hello");
+  }
+
+  function socialButton(icon: typeof googleIcon, label: string) {
+    return <button type="button" className="social-button" onClick={() => setNotice(`${label.replace("Continue with ", "")} sign-in is coming soon.`)}><Image unoptimized src={icon} alt="" className="provider-icon" /><span>{label}</span></button>;
+  }
+
+  return <main className="auth-stage"><section className="phone" aria-label="Plizzy authentication">
+    {screen === "welcome" && <div className="welcome-screen">
+      <p className="wordmark">plizzy</p>
+      <Image unoptimized src={penguinHero} alt="Plizzy, a friendly penguin blob" className="hero-penguin" priority />
+      <p className="welcome-copy">Turn your ideas<br />into games.<br /><strong>Play together.</strong></p>
+      <div className="pager" aria-label="Onboarding step 1 of 3"><span className="active" /><span /><span /></div>
+      <div className="welcome-actions"><button className="primary-action" onClick={() => goTo("sign-up")}>Get started</button><button className="outline-action" onClick={() => goTo("sign-in")}>Sign in</button></div>
+    </div>}
+
+    {(screen === "sign-up" || screen === "sign-in") && <div className="account-screen">
+      <header className="account-header"><button className="back-control" onClick={() => goTo("welcome")} aria-label="Back">‹</button><p className="small-wordmark">plizzy</p></header>
+      <div className="account-content">
+        <h1>{screen === "sign-up" ? <>Create your<br />account</> : <>Welcome<br />back</>}</h1>
+        <p className="subtitle">{screen === "sign-up" ? "Join a playground of limitless games." : "Pick up right where the fun left off."}</p>
+        <div className="social-stack">{socialButton(googleIcon, "Continue with Google")}{socialButton(appleIcon, "Continue with Apple")}</div>
+        <div className="divider"><span>or</span></div>
+        {screen === "sign-up" ? <form className="account-form" onSubmit={finishSignUp}>
+          <label>Name<input name="name" placeholder="Bhoomi" autoComplete="name" required /></label>
+          <label>Email<input name="email" type="email" placeholder="you@example.com" autoComplete="email" required /></label>
+          <label>Password<input name="password" type="password" placeholder="At least 8 characters" autoComplete="new-password" minLength={8} required /></label>
+          <label>Confirm password<input name="confirmPassword" type="password" placeholder="Type it again" autoComplete="new-password" minLength={8} required /></label>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="primary-action" type="submit">Create account</button>
+        </form> : <form className="account-form" onSubmit={finishSignIn}>
+          <label>Email<input name="email" type="email" placeholder="you@example.com" autoComplete="email" required /></label>
+          <label>Password<input name="password" type="password" placeholder="Your password" autoComplete="current-password" required /></label>
+          <button className="primary-action" type="submit">Sign in</button>
+        </form>}
+        <p className="switch-text">{screen === "sign-up" ? "Already have an account?" : "New to Plizzy?"} <button onClick={() => goTo(screen === "sign-up" ? "sign-in" : "sign-up")}>{screen === "sign-up" ? "Sign in" : "Create one"}</button></p>
+      </div>
+    </div>}
+
+    {screen === "hello" && <div className="hello-screen"><Image unoptimized src={penguinHero} alt="Plizzy, a friendly penguin blob" className="hello-penguin" priority /><p className="small-wordmark">plizzy</p><p className="overline">YOU&apos;RE IN</p><h1>Hello, {name || "Player"}!</h1><p>Let&apos;s make your first game.</p><button className="outline-action" onClick={() => goTo("welcome")}>Use a different account</button></div>}
+    {notice && <p className="notice" role="status">{notice}</p>}
+  </section></main>;
 }
