@@ -45,3 +45,6 @@ next-env.d.ts
 !/resources/plizzy-penguin-auth.png
 !/resources/google-provider-icon.png
 !/resources/apple-provider-icon.png
+
+# Local database migrations
+/migrations/
