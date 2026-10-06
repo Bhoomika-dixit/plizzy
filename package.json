@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@langfuse/otel": "^5.13.0",
+    "@langfuse/tracing": "^5.13.0",
+    "@opentelemetry/sdk-node": "^0.223.0",
     "@supabase/supabase-js": "^2.117.2",
     "next": "16.2.3",
     "react": "19.2.4",
