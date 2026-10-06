@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import AppHeader from "@/app/components/app-header";
 import styles from "./game-creator.module.css";
 
 type GameMode = "single_player" | "multiplayer";
@@ -47,7 +47,7 @@ export default function GameCreator({ mode, title, roomId }: { mode: GameMode; t
   }
 
   return <main className={styles.stage}><section className={styles.phone}>
-    <header><Link href="/footer/create" aria-label="Back to game type">‹</Link><p>plizzy</p></header>
+    <AppHeader backHref="/footer/create" />
     <div className={styles.content}><p className={styles.mode}>{roomId ? "ADDING TO YOUR ROOM" : mode === "multiplayer" ? "MULTIPLAYER GAME" : "SINGLE PLAYER GAME"}</p><h1>Create a game <span>✨</span></h1><p className={styles.subtitle}>Describe your game idea and let Plizzy bring it to life.</p><p className={styles.title}>“{title}”</p>
       <form onSubmit={createGame}><textarea value={idea} onChange={(event) => setIdea(event.target.value)} maxLength={500} placeholder="E.g. a drawing game where one person draws and others guess, but with a twist..." aria-label="Describe your game idea" /><p className={styles.counter}>{idea.length}/500</p><button type="button" className={styles.surprise} onClick={() => setIdea("Surprise me with a playful social game that is easy to learn and fun to replay.")}>🪄 &nbsp; Surprise me 🎲</button>{error && <p className={styles.error} role="alert">{error}</p>}{success && <p className={styles.success} role="status">{success}</p>}<button className={styles.submit} type="submit" disabled={isSubmitting}>{isSubmitting ? "Saving your game…" : "Create Game"}</button></form>
       <h2>Examples</h2><div className={styles.examples}>{examples.map((example) => <button type="button" key={example} onClick={() => setIdea(example)}>{example}</button>)}</div>

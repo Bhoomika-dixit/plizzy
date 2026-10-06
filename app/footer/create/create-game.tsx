@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import FooterNav from "@/app/components/footer-nav";
+import AppHeader from "@/app/components/app-header";
 import styles from "./create-game.module.css";
 
 type GameMode = "single_player" | "multiplayer";
@@ -28,8 +29,8 @@ export default function CreateGame({ roomId }: { roomId?: string }) {
   }
 
   return <main className="footer-demo"><section className={`footer-phone ${styles.phone}`}>
+    <AppHeader />
     <div className={styles.content}>
-      <p className={styles.wordmark}>plizzy</p>
       <p className={styles.overline}>CREATE A GAME</p>
       <h1>Who&apos;s playing?</h1>
       <p className={styles.intro}>{roomId ? "This game will join the room, so it’s set up for playing together." : "Start with a game type. You can shape all the wonderfully silly details next."}</p>

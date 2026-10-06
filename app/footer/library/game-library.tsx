@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import FooterNav from "@/app/components/footer-nav";
+import AppHeader from "@/app/components/app-header";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import styles from "./game-library.module.css";
 
@@ -47,8 +48,9 @@ export default function GameLibrary() {
   const multiplayerCount = games.filter((game) => game.mode === "multiplayer").length;
 
   return <main className="footer-demo"><section className={`footer-phone ${styles.phone}`}>
+    <AppHeader />
     <div className={styles.content}>
-      <div className={styles.topline}><p className="small-wordmark">plizzy</p><Link href="/footer/create" className={styles.createLink}>+ Create</Link></div>
+      <div className={styles.topline}><span /><Link href="/footer/create" className={styles.createLink}>+ Create</Link></div>
       <p className={styles.eyebrow}>YOUR COLLECTION</p><h1>Your little worlds</h1><p className={styles.intro}>Every game you make, ready for another round.</p>
       <div className={styles.summary}><span><strong>{games.length}</strong> created</span><span><strong>{multiplayerCount}</strong> to play together</span></div>
       <div className={styles.filters} aria-label="Filter games">
