@@ -1,6 +1,7 @@
 import { generateGameDefinition } from "../game-designer";
 import type { GameGenerationTrace } from "../observability";
 import { planGame } from "./agents";
+import { simulateGame } from "./simulator";
 import { runGenerationWorkflow } from "./workflow";
 import type { GameRequest } from "./contracts";
 
@@ -27,5 +28,7 @@ export async function executeV2(request: GameRequest, trace?: GameGenerationTrac
     },
   }, { maxRepairs: 0, deadlineMs: 120_000 });
   if (!result.ok) return { valid: false as const, errors: [result.message], workflowCode: result.code };
+  const simulation = simulateGame(result.artifact.definition);
+  if (!simulation.valid) return { valid: false as const, errors: simulation.errors, workflowCode: "SIMULATION_FAILED" };
   return { valid: true as const, definition: result.artifact.definition, repairCount, model, usage, strategy: result.decision.strategy, plan: result.plan };
 }
