@@ -24,10 +24,14 @@ export type GameEffect =
   | { type: "RANDOM_CHOICE"; key: string; choices: Primitive[] }
   | { type: "END_GAME"; reason?: string };
 export type GameRule = {
-  trigger: "GAME_STARTED" | "ENTITY_TAPPED" | "TIMER_COMPLETED";
+  trigger: "GAME_STARTED" | "ENTITY_TAPPED" | "ACTION_SELECTED" | "TIMER_COMPLETED";
   entityId?: string;
+  actionId?: string;
   effects: GameEffect[];
 };
+export type GameAction =
+  | { id: string; type: "TAP_ENTITY"; entityId: string }
+  | { id: string; type: "SELECT_OPTION"; label: string; emoji?: string };
 
 export type GameDefinitionV1 = {
   schemaVersion: 1;
@@ -37,7 +41,7 @@ export type GameDefinitionV1 = {
   players: { min: number; max: number };
   entities: GameEntity[];
   scenes: Array<{ id: string; background: string; title?: string }>;
-  actions: Array<{ id: string; type: "TAP_ENTITY"; entityId: string }>;
+  actions: GameAction[];
   rules: GameRule[];
   phases: Array<{ id: string; label: string; durationSeconds: number }>;
   winConditions: Array<{ type: "HIGHEST_SCORE" | "TARGET_SCORE"; scoreKey?: string; target?: number }>;
@@ -74,7 +78,7 @@ export function validateGameDefinition(value: unknown, mode: GameMode): { valid:
   if (!players || typeof players.min !== "number" || typeof players.max !== "number" || players.min < 1 || players.max < players.min || (mode === "single_player" && (players.min !== 1 || players.max !== 1))) errors.push("players must be valid for the requested mode.");
   if (!isRecord(value.state) || !Object.entries(value.state).every(([key, stateValue]) => isId(key) && isPrimitive(stateValue))) errors.push("state must be an object of primitive values with safe keys.");
   if (!visuals || !["backgroundColor", "accentColor", "textColor", "cardColor"].every((key) => typeof visuals[key] === "string")) errors.push("visuals must provide the supported colour fields.");
-  if (!Array.isArray(value.entities) || value.entities.length === 0) errors.push("entities must contain at least one tappable entity.");
+  if (!Array.isArray(value.entities)) errors.push("entities must be an array.");
   const entities = Array.isArray(value.entities) ? value.entities : [];
   const entityIds = new Set<string>();
   entities.forEach((entity, index) => {
@@ -86,11 +90,20 @@ export function validateGameDefinition(value: unknown, mode: GameMode): { valid:
   const phases = Array.isArray(value.phases) ? value.phases : [];
   const phaseIds = new Set<string>();
   phases.forEach((phase, index) => { if (!isRecord(phase) || !isId(phase.id) || phaseIds.has(phase.id) || typeof phase.label !== "string" || typeof phase.durationSeconds !== "number" || phase.durationSeconds < 5 || phase.durationSeconds > 600) errors.push(`phases[${index}] is invalid.`); else phaseIds.add(phase.id); });
-  if (!Array.isArray(value.actions) || value.actions.length === 0 || !value.actions.every((action) => isRecord(action) && isId(action.id) && action.type === "TAP_ENTITY" && isId(action.entityId) && entityIds.has(action.entityId))) errors.push("actions must map taps to declared entities.");
+  const actions = Array.isArray(value.actions) ? value.actions : [];
+  const actionIds = new Set<string>();
+  actions.forEach((action, index) => {
+    if (!isRecord(action) || !isId(action.id) || actionIds.has(action.id)) { errors.push(`actions[${index}] has an invalid id.`); return; }
+    actionIds.add(action.id);
+    if (action.type === "TAP_ENTITY" && isId(action.entityId) && entityIds.has(action.entityId)) return;
+    if (action.type === "SELECT_OPTION" && typeof action.label === "string" && action.label.length > 0 && action.label.length <= 80 && (action.emoji === undefined || typeof action.emoji === "string")) return;
+    errors.push(`actions[${index}] must be a supported tap or choice action.`);
+  });
+  if (!actions.length) errors.push("actions must contain at least one interaction.");
   if (!Array.isArray(value.rules) || value.rules.length === 0) errors.push("rules must contain declared event transitions.");
   let hasTimerEnd = false;
   (Array.isArray(value.rules) ? value.rules : []).forEach((rule, index) => {
-    if (!isRecord(rule) || (rule.trigger !== "GAME_STARTED" && rule.trigger !== "ENTITY_TAPPED" && rule.trigger !== "TIMER_COMPLETED") || (rule.entityId !== undefined && (!isId(rule.entityId) || !entityIds.has(rule.entityId))) || !Array.isArray(rule.effects) || rule.effects.length === 0) { errors.push(`rules[${index}] is invalid.`); return; }
+    if (!isRecord(rule) || (rule.trigger !== "GAME_STARTED" && rule.trigger !== "ENTITY_TAPPED" && rule.trigger !== "ACTION_SELECTED" && rule.trigger !== "TIMER_COMPLETED") || (rule.entityId !== undefined && (!isId(rule.entityId) || !entityIds.has(rule.entityId))) || (rule.actionId !== undefined && (!isId(rule.actionId) || !actionIds.has(rule.actionId))) || (rule.trigger === "ENTITY_TAPPED" && !rule.entityId) || (rule.trigger === "ACTION_SELECTED" && !rule.actionId) || !Array.isArray(rule.effects) || rule.effects.length === 0) { errors.push(`rules[${index}] is invalid.`); return; }
     if (rule.trigger === "TIMER_COMPLETED" && rule.effects.some((effect) => isRecord(effect) && effect.type === "END_GAME")) hasTimerEnd = true;
     rule.effects.forEach((effect, effectIndex) => validateEffect(effect, `rules[${index}].effects[${effectIndex}]`, entityIds, phaseIds, errors));
   });
@@ -110,5 +123,7 @@ export function parseModelJson(content: string): unknown {
 export function gameRulesMarkdown(definition: GameDefinitionV1) {
   const duration = definition.phases[0]?.durationSeconds ?? 60;
   const targets = definition.entities.map((entity) => `${entity.emoji} ${entity.label}`).join(", ");
-  return `# ${definition.metadata.title}\n\n${definition.metadata.description}\n\n## How to play\n\nTap ${targets} to score points before the ${duration}-second timer ends.\n\n## Win condition\n\nFinish with the best score you can.`;
+  const options = definition.actions.filter((action): action is Extract<GameAction, { type: "SELECT_OPTION" }> => action.type === "SELECT_OPTION").map((action) => `${action.emoji ?? ""} ${action.label}`.trim()).join(", ");
+  const interaction = options ? `Choose from: ${options}.` : `Tap ${targets} to score points.`;
+  return `# ${definition.metadata.title}\n\n${definition.metadata.description}\n\n## How to play\n\n${interaction} Finish before the ${duration}-second timer ends.\n\n## Win condition\n\nFinish with the best score you can.`;
 }

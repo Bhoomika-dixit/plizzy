@@ -14,9 +14,9 @@ export async function executeV2(request: GameRequest, trace?: GameGenerationTrac
   let model = "";
   let usage: Record<string, unknown> = {};
   const result = await runGenerationWorkflow(request, {
-    plan: (input) => planGame(input),
-    generate: async (input) => {
-      const generated = await generateGameDefinition({ ...input, trace });
+    plan: (input, signal) => planGame(input, signal, trace),
+    generate: async (input, plan, decision, signal) => {
+      const generated = await generateGameDefinition({ ...input, trace, signal, plan, decision });
       if (!generated.valid) throw new Error(generated.errors.join("; "));
       repairCount = generated.repairCount;
       model = generated.model;

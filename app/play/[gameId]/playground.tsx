@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import AppHeader from "@/app/components/app-header";
 import { GameDefinitionV1, validateGameDefinition } from "@/agent-harness/game-definition";
-import { createRuntime, dispatchTap, RuntimeState, tickRuntime } from "@/agent-harness/runtime";
+import { createRuntime, dispatchAction, dispatchTap, RuntimeState, tickRuntime } from "@/agent-harness/runtime";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import styles from "./playground.module.css";
 
@@ -53,6 +53,12 @@ export default function GamePlayground({ gameId }: { gameId: string }) {
     setRuntime(result.state); setActionNote(result.error ?? "Nice tap!");
     window.setTimeout(() => setActionNote(""), 700);
   }
+  function select(actionId: string) {
+    if (!definition || !runtime) return;
+    const result = dispatchAction(definition, runtime, actionId);
+    setRuntime(result.state); setActionNote(result.error ?? "Choice recorded!");
+    window.setTimeout(() => setActionNote(""), 900);
+  }
 
   if (loading) return <main className={styles.stage}><section className={styles.phone}><AppHeader backHref="/footer/library" /><div className={styles.status}><i /><i /><i /><p>Building your playground…</p></div></section></main>;
   if (error || !definition || !runtime) return <main className={styles.stage}><section className={styles.phone}><AppHeader backHref="/footer/library" /><div className={styles.failure}><span>✦</span><h1>Not ready to play</h1><p>{error || "This game could not be loaded."}</p><Link href="/footer/library">Back to your library</Link></div></section></main>;
@@ -66,10 +72,11 @@ export default function GamePlayground({ gameId }: { gameId: string }) {
       <div className={styles.hud}><div><small>Score</small><strong>{score}</strong></div><div><small>{phase?.label ?? "Play"}</small><strong>{runtime.secondsRemaining}s</strong></div></div>
       {runtime.status === "playing" ? <>
         <div className={styles.board} role="application" aria-label={`${gameTitle} game board`}>
-          <p>Tap everything you can!</p>
+          <p>{definition.actions.some((action) => action.type === "SELECT_OPTION") ? "Choose your next move" : "Tap everything you can!"}</p>
           {definition.entities.map((entity) => { const present = runtime.entities[entity.id]; const motion = entity.motion === "bob" ? styles.bob : entity.motion === "none" ? "" : styles.float; return present?.visible ? <button key={entity.id} type="button" onClick={() => tap(entity.id)} className={`${styles.entity} ${motion}`} style={{ left: `${present.x}%`, top: `${present.y}%`, fontSize: `${entity.size}px` }} aria-label={`Tap ${entity.label}`}><span>{entity.emoji}</span></button> : null; })}
           {actionNote && <p className={styles.note} role="status">{actionNote}</p>}
         </div>
+        {definition.actions.some((action) => action.type === "SELECT_OPTION") && <div aria-label="Available choices" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 10 }}>{definition.actions.filter((action) => action.type === "SELECT_OPTION").map((action) => <button key={action.id} type="button" onClick={() => select(action.id)} style={{ minHeight: 50, border: "1px solid color-mix(in srgb, var(--game-accent) 24%, white)", borderRadius: 14, padding: 8, color: "var(--game-text)", background: "var(--game-card)", font: "inherit", fontSize: ".73rem", fontWeight: 900 }}>{action.emoji && <span>{action.emoji} </span>}{action.label}</button>)}</div>}
         <p className={styles.hint}>Every tap is checked against this game&apos;s saved rules.</p>
       </> : <div className={styles.result}><span>✦</span><p className={styles.eyebrow}>ROUND COMPLETE</p><h2>{runtime.endReason || "Time is up!"}</h2><strong>{score}</strong><p>points scored. Your game is saved in the library whenever you&apos;re ready for another round.</p><div><button type="button" onClick={() => { setRuntime(createRuntime(definition)); setActionNote(""); }}>Play again</button><Link href="/footer/library">Back to library</Link></div></div>}
     </div>

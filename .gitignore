@@ -46,5 +46,8 @@ next-env.d.ts
 !/resources/google-provider-icon.png
 !/resources/apple-provider-icon.png
 
-# Local database migrations
-/migrations/
+# Local database migrations. The V2 publication RPC is source-controlled because
+# the route depends on it; other local migration experiments remain ignored.
+!/migrations/
+/migrations/*
+!/migrations/0007_atomic_generated_game_publication.sql

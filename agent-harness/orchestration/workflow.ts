@@ -3,9 +3,9 @@ import type { BuildDecision, GamePlan, GameRequest, GeneratedArtifact, WorkflowE
 import { canExecute, chooseStrategy } from "./policy";
 
 export type WorkflowDependencies = {
-  plan(request: GameRequest): Promise<GamePlan>;
-  generate(request: GameRequest, plan: GamePlan, decision: BuildDecision): Promise<GeneratedArtifact>;
-  repair?(request: GameRequest, plan: GamePlan, artifact: GeneratedArtifact, errors: string[]): Promise<GeneratedArtifact>;
+  plan(request: GameRequest, signal: AbortSignal): Promise<GamePlan>;
+  generate(request: GameRequest, plan: GamePlan, decision: BuildDecision, signal: AbortSignal): Promise<GeneratedArtifact>;
+  repair?(request: GameRequest, plan: GamePlan, artifact: GeneratedArtifact, errors: string[], signal: AbortSignal): Promise<GeneratedArtifact>;
   onEvent?(event: WorkflowEvent): void | Promise<void>;
   now?(): number;
 };
@@ -25,6 +25,8 @@ export async function runGenerationWorkflow(
   const limits = { ...DEFAULT_LIMITS, ...overrides };
   const now = deps.now ?? Date.now;
   const deadline = now() + limits.deadlineMs;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("Generation exceeded its deadline.")), limits.deadlineMs);
   const events: WorkflowEvent[] = [];
   let steps = 0;
   const emit = async (stage: WorkflowEvent["stage"], attempt: number, detail?: string) => {
@@ -40,7 +42,7 @@ export async function runGenerationWorkflow(
   try {
     guard();
     await emit("planning", 0);
-    const plan = await deps.plan(request);
+    const plan = await deps.plan(request, controller.signal);
     if (plan.mode !== request.mode || !Array.isArray(plan.requiredCapabilities) || !Array.isArray(plan.mechanics)) {
       throw new WorkflowError("INVALID_ARTIFACT", "Planner returned an invalid plan.");
     }
@@ -53,7 +55,7 @@ export async function runGenerationWorkflow(
     }
     guard();
     await emit("generating", 0);
-    let artifact = await deps.generate(request, plan, decision);
+    let artifact = await deps.generate(request, plan, decision, controller.signal);
     for (let attempt = 0; attempt <= limits.maxRepairs; attempt++) {
       guard();
       await emit("validating", attempt);
@@ -70,15 +72,15 @@ export async function runGenerationWorkflow(
       }
       guard();
       await emit("repairing", attempt + 1);
-      artifact = await deps.repair(request, plan, artifact, validation.errors);
+      artifact = await deps.repair(request, plan, artifact, validation.errors, controller.signal);
     }
     throw new WorkflowError("LIMIT_EXCEEDED", "Unexpected repair loop exit.");
   } catch (error) {
-    const code = error instanceof WorkflowError ? error.code : "AGENT_ERROR";
+    const code = controller.signal.aborted || error instanceof WorkflowError && error.code === "TIMEOUT" ? "TIMEOUT" : error instanceof WorkflowError ? error.code : "AGENT_ERROR";
     const message = error instanceof Error ? error.message : "Generation failed.";
     await emit("failed", 0, message);
     return { ok: false, code, message, events };
-  }
+  } finally { clearTimeout(timeout); }
 }
 
 class WorkflowError extends Error {

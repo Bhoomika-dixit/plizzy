@@ -4,7 +4,7 @@ import type { BuildDecision, BuildStrategy, GamePlan } from "./contracts";
  * Policy is intentionally independent from model reasoning.
  * Only declarative V1 has a production executor today.
  */
-const availableCapabilities = new Set(["tap_entity", "score", "timer", "move_entity", "random_choice", "phase"]);
+const availableCapabilities = new Set(["tap_entity", "choice_action", "score", "timer", "move_entity", "random_choice", "phase"]);
 const executableStrategies = new Set<BuildStrategy>(["declarative"]);
 
 export function chooseStrategy(plan: GamePlan): BuildDecision {

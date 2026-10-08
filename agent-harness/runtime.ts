@@ -6,9 +6,9 @@ export type RuntimeResult = { state: RuntimeState; error?: string };
 
 const clone = (state: RuntimeState): RuntimeState => ({ ...state, values: { ...state.values }, entities: Object.fromEntries(Object.entries(state.entities).map(([id, entity]) => [id, { ...entity }])) });
 function nextRandom(seed: number) { const value = (seed * 1664525 + 1013904223) >>> 0; return { seed: value, unit: value / 4294967296 }; }
-function trigger(definition: GameDefinitionV1, state: RuntimeState, event: "GAME_STARTED" | "ENTITY_TAPPED" | "TIMER_COMPLETED", entityId?: string) {
+function trigger(definition: GameDefinitionV1, state: RuntimeState, event: "GAME_STARTED" | "ENTITY_TAPPED" | "ACTION_SELECTED" | "TIMER_COMPLETED", entityId?: string, actionId?: string) {
   let current = state;
-  for (const rule of definition.rules) if (rule.trigger === event && (rule.entityId === undefined || rule.entityId === entityId)) for (const effect of rule.effects) current = applyEffect(definition, current, effect);
+  for (const rule of definition.rules) if (rule.trigger === event && (rule.entityId === undefined || rule.entityId === entityId) && (rule.actionId === undefined || rule.actionId === actionId)) for (const effect of rule.effects) current = applyEffect(definition, current, effect);
   return current;
 }
 function applyEffect(definition: GameDefinitionV1, state: RuntimeState, effect: GameEffect): RuntimeState {
@@ -40,6 +40,14 @@ export function dispatchTap(definition: GameDefinitionV1, state: RuntimeState, e
   if (state.status !== "playing" || !state.entities[entityId]?.visible) return { state, error: "That target is not available right now." };
   if (!definition.actions.some((action) => action.type === "TAP_ENTITY" && action.entityId === entityId)) return { state, error: "That action is not allowed in this game." };
   return { state: trigger(definition, state, "ENTITY_TAPPED", entityId) };
+}
+
+export function dispatchAction(definition: GameDefinitionV1, state: RuntimeState, actionId: string): RuntimeResult {
+  if (state.status !== "playing") return { state, error: "The game has already finished." };
+  const action = definition.actions.find((item) => item.id === actionId);
+  if (!action) return { state, error: "That action is not allowed in this game." };
+  if (action.type === "TAP_ENTITY") return dispatchTap(definition, state, action.entityId);
+  return { state: trigger(definition, state, "ACTION_SELECTED", undefined, action.id) };
 }
 
 export function tickRuntime(definition: GameDefinitionV1, state: RuntimeState): RuntimeState {

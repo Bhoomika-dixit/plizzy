@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
   const body = await request.json() as { title?: unknown; prompt?: unknown; mode?: unknown };
   const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
-  const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 500) : "";
+  const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 3000) : "";
   const mode: GameMode | null = body.mode === "single_player" || body.mode === "multiplayer" ? body.mode : null;
   if (!title || !prompt || !mode) return NextResponse.json({ error: "A title, idea, and game mode are required." }, { status: 400 });
 
@@ -44,17 +44,22 @@ export async function POST(request: NextRequest) {
   const trace = startGameGenerationTrace({ workflowId, userId: user.id, title, prompt, mode });
   try {
     const useV2 = process.env.PLIZZY_ORCHESTRATION_V2 === "true";
+    if (useV2 && mode !== "single_player") {
+      trace.finish({ workflowId, accepted: false, reason: "V2 multiplayer requires an authoritative action reducer." });
+      return NextResponse.json({ error: "V2 generation currently supports single-player games only." }, { status: 422 });
+    }
     const generated = useV2 ? await executeV2({ title, prompt, mode }, trace) : await generateGameDefinition({ title, prompt, mode, trace });
     if (!generated.valid) { trace.finish({ workflowId, accepted: false, validationErrors: generated.errors }); return NextResponse.json({ error: "The generated definition was invalid after repair.", validationErrors: generated.errors }, { status: 422 }); }
     const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
-    const { data: game, error: gameError } = await admin.from("games").insert({ creator_id: user.id, title, summary: generated.definition.metadata.description.slice(0, 500), visibility: "private" }).select("id").single();
-    if (gameError || !game) throw new Error(gameError?.message ?? "Could not save the game.");
-    const { data: version, error: versionError } = await admin.from("game_versions").insert({ game_id: game.id, version_number: 1, prompt, rules_markdown: gameRulesMarkdown(generated.definition), min_players: generated.definition.players.min, max_players: generated.definition.players.max, estimated_duration_minutes: generated.definition.config.estimatedDurationMinutes, game_mode: mode, definition: generated.definition, visual_theme: generated.definition.visuals, generation_metadata: { provider: useV2 ? (process.env.PLIZZY_MODEL_PROVIDER || "anthropic") : "anthropic", model: generated.model, schema_version: 1, prompt_version: "game-definition-v1", generated_at: new Date().toISOString(), validation: "passed", repair_count: generated.repairCount, usage: generated.usage, orchestration_version: useV2 ? "v2" : "v1", workflow_id: workflowId, langfuse_trace_id: trace.traceId ?? null } }).select("id").single();
-    if (versionError || !version) throw new Error(versionError?.message ?? "Could not save the game version.");
-    const { error: latestError } = await admin.from("games").update({ latest_version_id: version.id }).eq("id", game.id);
-    if (latestError) throw new Error(latestError.message);
-    const { error: libraryError } = await admin.from("user_games").upsert({ user_id: user.id, game_id: game.id, is_saved: true, last_played_at: null }, { onConflict: "user_id,game_id" });
-    if (libraryError) throw new Error(libraryError.message);
+    const { data: published, error: publicationError } = await admin.rpc("publish_generated_game", {
+      p_creator_id: user.id, p_title: title, p_summary: generated.definition.metadata.description.slice(0, 500), p_prompt: prompt,
+      p_rules_markdown: gameRulesMarkdown(generated.definition), p_min_players: generated.definition.players.min,
+      p_max_players: generated.definition.players.max, p_estimated_duration_minutes: generated.definition.config.estimatedDurationMinutes,
+      p_game_mode: mode, p_definition: generated.definition, p_visual_theme: generated.definition.visuals,
+      p_generation_metadata: { provider: useV2 ? (process.env.PLIZZY_MODEL_PROVIDER || "anthropic") : "anthropic", model: generated.model, schema_version: 1, prompt_version: "game-definition-v1", generated_at: new Date().toISOString(), validation: "passed", repair_count: generated.repairCount, usage: generated.usage, orchestration_version: useV2 ? "v2" : "v1", workflow_id: workflowId, langfuse_trace_id: trace.traceId ?? null },
+    }).single() as { data: { game_id: string; version_id: string } | null; error: { message: string } | null };
+    if (publicationError || !published) throw new Error(publicationError?.message ?? "Could not atomically publish the game.");
+    const game = { id: published.game_id }; const version = { id: published.version_id };
     let asset: { bucket: string; path: string } | undefined; let assetWarning: string | undefined;
     try { asset = await saveCoverAsset(admin, game.id, version.id, title, generated.definition); }
     catch (error) { assetWarning = error instanceof Error ? error.message : "The cover asset could not be saved."; }

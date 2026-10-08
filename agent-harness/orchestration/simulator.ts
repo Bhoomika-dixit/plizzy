@@ -1,5 +1,5 @@
 import type { GameDefinitionV1 } from "../game-definition";
-import { createRuntime, dispatchTap, tickRuntime } from "../runtime";
+import { createRuntime, dispatchAction, tickRuntime } from "../runtime";
 
 /** Pure, bounded deterministic playtest. No generated code is evaluated. */
 export function simulateGame(definition: GameDefinitionV1): { valid: boolean; errors: string[]; taps: number; ticks: number } {
@@ -9,15 +9,19 @@ export function simulateGame(definition: GameDefinitionV1): { valid: boolean; er
   try {
     let state = createRuntime(definition);
     if (state.status !== "playing") errors.push("Game finishes immediately.");
+    let interactionChangedState = false;
+    for (const action of definition.actions) {
+      if (state.status !== "playing") break;
+      const before = JSON.stringify(state);
+      const result = dispatchAction(definition, state, action.id);
+      if (result.error) errors.push(`Action ${action.id} is not playable: ${result.error}`);
+      state = result.state;
+      taps++;
+      interactionChangedState ||= before !== JSON.stringify(state);
+    }
+    if (!interactionChangedState) errors.push("No declared action changes game state.");
     const initialDuration = Math.min(600, definition.phases[0]?.durationSeconds ?? 0);
     for (let i = 0; i < Math.min(5, initialDuration) && state.status === "playing"; i++) {
-      const target = definition.entities.find(entity => state.entities[entity.id]?.visible);
-      if (target) {
-        const result = dispatchTap(definition, state, target.id);
-        if (result.error) errors.push(result.error);
-        state = result.state;
-        taps++;
-      }
       state = tickRuntime(definition, state);
       ticks++;
     }
