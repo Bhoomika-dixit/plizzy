@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { generateGameDefinition } from "@/agent-harness/game-designer";
+import { executeV2 } from "@/agent-harness/orchestration/execute";
 import { gameRulesMarkdown, GameDefinitionV1, GameMode } from "@/agent-harness/game-definition";
 import { startGameGenerationTrace } from "@/agent-harness/observability";
 
@@ -42,12 +43,13 @@ export async function POST(request: NextRequest) {
   const workflowId = randomUUID();
   const trace = startGameGenerationTrace({ workflowId, userId: user.id, title, prompt, mode });
   try {
-    const generated = await generateGameDefinition({ title, prompt, mode, trace });
+    const useV2 = process.env.PLIZZY_ORCHESTRATION_V2 === "true";
+    const generated = useV2 ? await executeV2({ title, prompt, mode }, trace) : await generateGameDefinition({ title, prompt, mode, trace });
     if (!generated.valid) { trace.finish({ workflowId, accepted: false, validationErrors: generated.errors }); return NextResponse.json({ error: "The generated definition was invalid after repair.", validationErrors: generated.errors }, { status: 422 }); }
     const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
     const { data: game, error: gameError } = await admin.from("games").insert({ creator_id: user.id, title, summary: generated.definition.metadata.description.slice(0, 500), visibility: "private" }).select("id").single();
     if (gameError || !game) throw new Error(gameError?.message ?? "Could not save the game.");
-    const { data: version, error: versionError } = await admin.from("game_versions").insert({ game_id: game.id, version_number: 1, prompt, rules_markdown: gameRulesMarkdown(generated.definition), min_players: generated.definition.players.min, max_players: generated.definition.players.max, estimated_duration_minutes: generated.definition.config.estimatedDurationMinutes, game_mode: mode, definition: generated.definition, visual_theme: generated.definition.visuals, generation_metadata: { provider: "anthropic", model: generated.model, schema_version: 1, prompt_version: "game-definition-v1", generated_at: new Date().toISOString(), validation: "passed", repair_count: generated.repairCount, usage: generated.usage, workflow_id: workflowId, langfuse_trace_id: trace.traceId ?? null } }).select("id").single();
+    const { data: version, error: versionError } = await admin.from("game_versions").insert({ game_id: game.id, version_number: 1, prompt, rules_markdown: gameRulesMarkdown(generated.definition), min_players: generated.definition.players.min, max_players: generated.definition.players.max, estimated_duration_minutes: generated.definition.config.estimatedDurationMinutes, game_mode: mode, definition: generated.definition, visual_theme: generated.definition.visuals, generation_metadata: { provider: useV2 ? (process.env.PLIZZY_MODEL_PROVIDER || "anthropic") : "anthropic", model: generated.model, schema_version: 1, prompt_version: "game-definition-v1", generated_at: new Date().toISOString(), validation: "passed", repair_count: generated.repairCount, usage: generated.usage, orchestration_version: useV2 ? "v2" : "v1", workflow_id: workflowId, langfuse_trace_id: trace.traceId ?? null } }).select("id").single();
     if (versionError || !version) throw new Error(versionError?.message ?? "Could not save the game version.");
     const { error: latestError } = await admin.from("games").update({ latest_version_id: version.id }).eq("id", game.id);
     if (latestError) throw new Error(latestError.message);
