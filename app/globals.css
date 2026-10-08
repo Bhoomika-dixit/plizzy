@@ -95,3 +95,7 @@ body { font-family: var(--plizzy-font-body); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* Cross-screen visual consistency and motion safety */
+:root{--ink:#211b35;--muted:#706580;--paper:#f5f1ff;--border:#e6def4;--violet:#7048e8}
+.auth-stage,.footer-demo{background:#f5f1ff}.phone,.footer-phone{background:#fbf9ff;border-color:#e7dff5}.footer-nav{background:#fbf9ff;border-top-color:#e7dff5}.footer-item.active{color:#7048e8}.footer-item{transition:color 200ms ease,transform 120ms ease}.footer-item:active{transform:scale(.94)}.footer-item:focus-visible{outline:3px solid #7048e8;outline-offset:-3px;border-radius:12px}.mode-card,.section,.profileCard{border-radius:var(--plizzy-radius-card)}.account-content h1,.hello-screen h1,.create-page-copy h1{font-family:var(--font-display);letter-spacing:-.025em}.primary-action,.outline-action{border-radius:999px}.mode-card strong{font-family:var(--font-display)}
