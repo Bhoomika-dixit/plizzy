@@ -1,0 +1,130 @@
+/* Styles the Fish Tap game screen, HUD, arena, fish controls, and responsive layout. */
+.game {
+    width: min(100%, 720px);
+    margin: 0 auto;
+    color: #eef6ff;
+  }
+  
+  .hud,
+  .results {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  
+  .stat {
+    padding: 12px 16px;
+    border: 1px solid #274d78;
+    border-radius: 12px;
+    background: #0e2038;
+  }
+  
+  .stat span {
+    display: block;
+    color: #a8c1dc;
+    font-size: 0.82rem;
+  }
+  
+  .stat strong {
+    display: block;
+    margin-top: 4px;
+    font-size: 1.5rem;
+  }
+  
+  .arena {
+    position: relative;
+    height: 420px;
+    overflow: hidden;
+    border: 1px solid #3474b7;
+    border-radius: 16px;
+    background: linear-gradient(#0a3565, #062347);
+    touch-action: manipulation;
+    user-select: none;
+  }
+  
+  .ground {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 36px;
+    background: #5a3714;
+    border-top: 3px solid #b37326;
+  }
+  
+  .fish {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 64px;
+    height: 64px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    transition: opacity 150ms ease, scale 150ms ease;
+  }
+  
+  .fish:hover {
+    scale: 1.08;
+  }
+  
+  .fish:active {
+    scale: 0.92;
+  }
+  
+  .fish img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  
+  .overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-content: center;
+    gap: 16px;
+    padding: 24px;
+    text-align: center;
+    background: rgb(3 16 31 / 88%);
+  }
+  
+  .overlay h1,
+  .overlay p {
+    margin: 0;
+  }
+  
+  .overlay button {
+    justify-self: center;
+    padding: 10px 18px;
+    border: 1px solid #79baff;
+    border-radius: 10px;
+    background: #1570c7;
+    color: white;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  
+  .finalScore {
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+  
+  @media (max-width: 520px) {
+    .hud,
+    .results {
+      gap: 8px;
+    }
+  
+    .stat {
+      padding: 10px;
+    }
+  
+    .arena {
+      height: 360px;
+    }
+  }
