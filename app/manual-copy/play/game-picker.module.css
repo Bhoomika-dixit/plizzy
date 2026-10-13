@@ -1,0 +1,4 @@
+/* Styles the stable selector that switches between agent-created game manifests. */
+.picker { position: fixed; z-index: 10; top: 16px; left: 50%; display: flex; gap: 8px; padding: 6px; border: 1px solid #475569; border-radius: 12px; background: rgb(15 23 42 / 90%); transform: translateX(-50%); }
+.picker button { padding: 8px 12px; border: 0; border-radius: 8px; background: transparent; color: #e2e8f0; font: inherit; cursor: pointer; }
+.picker button[aria-pressed="true"] { background: #2563eb; color: white; }

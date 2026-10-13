@@ -3,6 +3,7 @@
 /** Selects the permanent runtime component for a validated game manifest. */
 import type { GameManifest } from "./game-manifest";
 import { FallingTapRuntime } from "./falling-tap-runtime";
+import { SudokuTwistRuntime } from "./sudoku-twist-runtime";
 
 /**
  * What it does: Routes a manifest to its matching built-in game engine.
@@ -12,5 +13,7 @@ export function GameRuntime({ manifest }: { manifest: GameManifest }) {
   switch (manifest.engine) {
     case "falling_tap":
       return <FallingTapRuntime manifest={manifest} />;
+    case "sudoku_twist":
+      return <SudokuTwistRuntime manifest={manifest} />;
   }
 }

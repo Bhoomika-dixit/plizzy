@@ -30,4 +30,25 @@ export type FallingTapManifest = {
   };
 };
 
-export type GameManifest = FallingTapManifest;
+export type SudokuTwistManifest = {
+  schemaVersion: 1;
+  engine: "sudoku_twist";
+  metadata: {
+    id: string;
+    title: string;
+    instructions: string;
+  };
+  theme: {
+    pageBackground: string;
+    accentColor: string;
+    textColor: string;
+  };
+  rules: {
+    gridSize: 4;
+    boxSize: 2;
+    puzzle: Array<Array<number | null>>;
+    twist: "both_diagonals_unique";
+  };
+};
+
+export type GameManifest = FallingTapManifest | SudokuTwistManifest;
