@@ -16,27 +16,29 @@ export default function GameCreator({ mode, title, roomId }: { mode: GameMode; t
   async function createGame(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const prompt = idea.trim();
     if (!prompt) { setError("Tell Plizzy a little about your game first."); return; }
-    const supabase = getSupabaseClient(); if (!supabase) { setError("Supabase is not connected yet."); return; }
-    const { data: { session } } = await supabase.auth.getSession(); if (!session) { setError("Please sign in before creating a game."); return; }
     setError(""); setSuccess(""); setIsSubmitting(true);
     try {
+    if (mode === "single_player") {
+      const response = await fetch("/api/compose-game", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: `Game title: ${title}\nCreator idea: ${prompt}` }) });
+      const payload = await response.json() as { error?: string; errors?: string[]; valid?: boolean; recipe?: { templateId?: "falling_tap" | "sudoku_twist" | "memory_match" } };
+      if (!response.ok || !payload.valid || !payload.recipe?.templateId) { setError(payload.error ?? payload.errors?.[0] ?? "Plizzy could not match that idea to a playable game type yet."); setIsSubmitting(false); return; }
+      const gameByTemplate = { falling_tap: "fish", sudoku_twist: "sudoku", memory_match: "memory" } as const;
+      router.push(`/manual-copy/play?game=${gameByTemplate[payload.recipe.templateId]}`);
+      return;
+    }
+    const supabase = getSupabaseClient(); if (!supabase) { setError("Supabase is not connected yet."); return; }
+    const { data: { session } } = await supabase.auth.getSession(); if (!session) { setError("Please sign in before creating a game."); return; }
     const response = await fetch("/api/generate-game", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ title, prompt, mode }) });
     const payload = await response.json() as { error?: string; gameId?: string; versionId?: string; repairCount?: number };
     if (!response.ok || !payload.versionId || !payload.gameId) { setError(payload.error ?? "Plizzy couldn't generate that game yet."); setIsSubmitting(false); return; }
-    if (mode === "multiplayer") {
-      if (roomId) {
+    if (roomId) {
         const { error: roomGameError } = await supabase.from("room_games").insert({ room_id: roomId, game_version_id: payload.versionId, added_by: session.user.id, position: 0 });
         if (roomGameError) { setError(`Your game was generated, but could not be added to this room: ${roomGameError.message}`); setIsSubmitting(false); return; }
         setSuccess("Your validated game is ready and has been added to this room.");
-      } else {
+    } else {
         const { data: roomRows, error: roomError } = await supabase.rpc("create_room_for_game", { target_game_version_id: payload.versionId }); const room = roomRows?.[0];
         if (roomError || !room) { setError(`Your game was generated, but its room could not be created: ${roomError?.message ?? "Unknown error"}`); setIsSubmitting(false); return; }
         setSuccess(`Your validated game is ready in ${room.room_name}. Invite code: ${room.invite_code}.`);
-      }
-    } else {
-      setSuccess(`Your validated game is ready${payload.repairCount ? " (after one safe repair)" : ""}.`);
-      router.push(`/play/${payload.gameId}`);
-      return;
     }
     setIsSubmitting(false);
     } catch { setError("We couldn’t reach Plizzy. Please check your connection and try again."); setIsSubmitting(false); }

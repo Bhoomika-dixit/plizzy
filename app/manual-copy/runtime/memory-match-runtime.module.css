@@ -1,0 +1,14 @@
+/* Styles the stable Memory Match runtime and its card flip states. */
+.game { min-height: 100dvh; padding: 32px 16px; }
+.content { width: min(100%, 580px); margin: 0 auto; }
+.eyebrow { margin: 0; color: #fcd34d; font-size: .8rem; font-weight: 700; letter-spacing: .12em; }
+.content h1 { margin: 6px 0; }
+.stats { display: flex; justify-content: space-between; margin: 20px 0 12px; color: #dbeafe; font-weight: 700; }
+.grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.card { position: relative; aspect-ratio: 1; overflow: hidden; border: 2px solid #fcd34d; border-radius: 16px; background: #1e3a8a; color: #1e293b; font-size: clamp(2rem, 8vw, 4.5rem); cursor: pointer; }
+.card img { object-fit: cover; }
+.card.revealed { background: #f8fafc; transform: rotateY(180deg); }
+.card.matched { border-color: #86efac; background: #dcfce7; }
+.result { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; padding: 16px; border-radius: 12px; background: #1e3a8a; }
+.result button { padding: 10px 16px; border: 0; border-radius: 10px; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+@media (max-width: 420px) { .grid { gap: 8px; } .card { border-radius: 10px; } .result { align-items: flex-start; flex-direction: column; } }

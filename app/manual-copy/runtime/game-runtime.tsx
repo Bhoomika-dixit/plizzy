@@ -3,6 +3,7 @@
 /** Selects the permanent runtime component for a validated game manifest. */
 import type { GameManifest } from "./game-manifest";
 import { FallingTapRuntime } from "./falling-tap-runtime";
+import { MemoryMatchRuntime } from "./memory-match-runtime";
 import { SudokuTwistRuntime } from "./sudoku-twist-runtime";
 
 /**
@@ -15,5 +16,7 @@ export function GameRuntime({ manifest }: { manifest: GameManifest }) {
       return <FallingTapRuntime manifest={manifest} />;
     case "sudoku_twist":
       return <SudokuTwistRuntime manifest={manifest} />;
+    case "memory_match":
+      return <MemoryMatchRuntime manifest={manifest} />;
   }
 }

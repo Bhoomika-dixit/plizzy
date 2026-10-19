@@ -51,4 +51,26 @@ export type SudokuTwistManifest = {
   };
 };
 
-export type GameManifest = FallingTapManifest | SudokuTwistManifest;
+export type MemoryMatchManifest = {
+  schemaVersion: 1;
+  engine: "memory_match";
+  metadata: {
+    id: string;
+    title: string;
+    instructions: string;
+  };
+  theme: {
+    pageBackground: string;
+    accentColor: string;
+    textColor: string;
+  };
+  assets: {
+    cardBack: StaticImageData;
+  };
+  rules: {
+    pairs: Array<{ id: string; symbol: string; label: string }>;
+    mismatchDelayMs: number;
+  };
+};
+
+export type GameManifest = FallingTapManifest | SudokuTwistManifest | MemoryMatchManifest;
