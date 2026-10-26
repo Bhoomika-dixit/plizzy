@@ -11,12 +11,11 @@ type GameMode = "single_player" | "multiplayer";
 
 const modes: Array<{ mode: GameMode; title: string; description: string; icon: string }> = [
   { mode: "single_player", title: "Single player", description: "Make something just for you. You can play it locally whenever you like.", icon: "✦" },
-  { mode: "multiplayer", title: "Multiplayer", description: "Make a game night. We’ll create a room for your friends to join.", icon: "♟" },
 ];
 
 export default function CreateGame({ roomId }: { roomId?: string }) {
   const router = useRouter();
-  const [mode, setMode] = useState<GameMode | null>(roomId ? "multiplayer" : null);
+  const [mode, setMode] = useState<GameMode | null>(null);
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
 
@@ -33,9 +32,9 @@ export default function CreateGame({ roomId }: { roomId?: string }) {
     <div className={styles.content}>
       <p className={styles.overline}>CREATE A GAME</p>
       <h1>Who&apos;s playing?</h1>
-      <p className={styles.intro}>{roomId ? "This game will join the room, so it’s set up for playing together." : "Start with a game type. You can shape all the wonderfully silly details next."}</p>
+      <p className={styles.intro}>{roomId ? "Multiplayer creation will return after the single-player V2 runtime is complete." : "Start with single player. You can shape the mechanics and all the wonderfully silly details next."}</p>
       <div className={styles.options} role="radiogroup" aria-label="Game type">
-        {modes.filter((item) => !roomId || item.mode === "multiplayer").map((item) => <button key={item.mode} type="button" role="radio" aria-checked={mode === item.mode} className={`${styles.card} ${mode === item.mode ? styles.selected : ""}`} onClick={() => { setMode(item.mode); setError(""); }}>
+        {!roomId && modes.map((item) => <button key={item.mode} type="button" role="radio" aria-checked={mode === item.mode} className={`${styles.card} ${mode === item.mode ? styles.selected : ""}`} onClick={() => { setMode(item.mode); setError(""); }}>
           <span className={styles.icon} aria-hidden="true">{item.icon}</span><span><strong>{item.title}</strong><small>{item.description}</small></span><span className={styles.check} aria-hidden="true">{mode === item.mode ? "✓" : ""}</span>
         </button>)}
       </div>
@@ -44,7 +43,7 @@ export default function CreateGame({ roomId }: { roomId?: string }) {
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary-action" type="submit">Continue to game creator</button>
       </form>}
-      {!mode && <p className={styles.hint}>Pick one to continue.</p>}
+      {!mode && <p className={styles.hint}>{roomId ? "Single-player games can still be created from the Create tab." : "Pick one to continue."}</p>}
       <Link className={styles.back} href="/">Back to home</Link>
     </div>
     <FooterNav active="create" />

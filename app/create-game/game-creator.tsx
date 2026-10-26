@@ -8,7 +8,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import styles from "./game-creator.module.css";
 
 type GameMode = "single_player" | "multiplayer";
-const examples = ["A game where we roast each other with AI", "Truth or dare but make it weirder", "A detective game with a time limit"];
+const examples = ["A 4×4 memory card game with ocean animals", "A timed space trivia game with four choices", "A detective game where I inspect clues and name the culprit"];
 
 export default function GameCreator({ mode, title, roomId }: { mode: GameMode; title: string; roomId?: string }) {
   const router = useRouter();
