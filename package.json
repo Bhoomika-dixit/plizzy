@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:multiplayer": "node --test tests/multiplayer.test.cjs"
   },
   "dependencies": {
     "@langfuse/otel": "^5.13.0",

@@ -64,16 +64,18 @@ function SideScrollerGame({ title, definition }: { gameId: string; title: string
   </GameFrame>;
 }
 
-function GenericV2Game({ title, definition }: { gameId: string; title: string; definition: GameDefinitionV2 }) {
-  const [runtime, setRuntime] = useState<RuntimeStateV2>(() => createRuntimeV2(definition));
+export function GenericV2Game({ title, definition, shared }: { gameId: string; title: string; definition: GameDefinitionV2; shared?: { state: RuntimeStateV2; dispatch(event: import("@/agent-harness/runtime-v2").GameEventV2): void; restart(): void } }) {
+  const [localRuntime, setRuntime] = useState<RuntimeStateV2>(() => createRuntimeV2(definition));
+  const runtime = shared?.state ?? localRuntime;
+  const sendEvent = useCallback((event: import("@/agent-harness/runtime-v2").GameEventV2) => { if (shared) shared.dispatch(event); else setRuntime((current) => dispatchGameEventV2(definition, current, event)); }, [definition, shared]);
   const [text, setText] = useState("");
   const [dragged, setDragged] = useState<string>();
   const pointerStart = useRef<{ x: number; y: number } | undefined>(undefined);
   useEffect(() => {
-    if (runtime.status !== "playing" || !runtime.timerRunning) return;
+    if (shared || runtime.status !== "playing" || !runtime.timerRunning) return;
     const interval = window.setInterval(() => setRuntime((current) => tickRuntimeV2(definition, current)), 1000);
     return () => window.clearInterval(interval);
-  }, [definition, runtime.status, runtime.timerRunning]);
+  }, [definition, runtime.status, runtime.timerRunning, shared]);
   const score = typeof runtime.values.score === "number" ? runtime.values.score : 0;
   const textInteraction = definition.interactions.find((item) => item.type === "text_input.v1");
   const directional = definition.interactions.find((item) => item.type === "swipe.v1" || item.type === "keyboard_move.v1");
@@ -81,15 +83,16 @@ function GenericV2Game({ title, definition }: { gameId: string; title: string; d
     const keyboard = definition.interactions.find((item) => item.type === "keyboard_move.v1");
     if (!keyboard) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLElement && event.target.isContentEditable) return;
       const directionByKey: Record<string, string> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
       const direction = directionByKey[event.key];
       if (!direction) return;
       event.preventDefault();
-      setRuntime((current) => dispatchGameEventV2(definition, current, { type: keyboard.event, direction }));
+      sendEvent({ type: keyboard.event, direction });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [definition]);
+  }, [definition, sendEvent]);
   const boardStyle = useMemo(() => ({
     "--grid-columns": definition.renderer.config.columns ?? definition.renderer.config.lanes ?? 3,
     "--game-background-image": backgroundValue(definition),
@@ -97,10 +100,10 @@ function GenericV2Game({ title, definition }: { gameId: string; title: string; d
 
   function activate(entity: GameEntityV2) {
     const interaction = definition.interactions.find((item) => item.type !== "drag_drop.v1" && item.type !== "text_input.v1" && item.type !== "swipe.v1" && item.type !== "keyboard_move.v1" && matchesTarget(entity, item.target));
-    if (interaction) setRuntime((current) => dispatchGameEventV2(definition, current, { type: interaction.event, entityId: entity.id }));
+    if (interaction) sendEvent({ type: interaction.event, entityId: entity.id });
   }
-  function submitText(event: FormEvent) { event.preventDefault(); if (!textInteraction || !text.trim()) return; setRuntime((current) => dispatchGameEventV2(definition, current, { type: textInteraction.event, text: text.trim() })); setText(""); }
-  function direction(value: string) { if (directional) setRuntime((current) => dispatchGameEventV2(definition, current, { type: directional.event, direction: value })); }
+  function submitText(event: FormEvent) { event.preventDefault(); if (!textInteraction || !text.trim()) return; sendEvent({ type: textInteraction.event, text: text.trim() }); setText(""); }
+  function direction(value: string) { if (directional) sendEvent({ type: directional.event, direction: value }); }
   function finishSwipe(x: number, y: number) {
     const start = pointerStart.current; pointerStart.current = undefined;
     if (!start || directional?.type !== "swipe.v1") return;
@@ -113,12 +116,12 @@ function GenericV2Game({ title, definition }: { gameId: string; title: string; d
     {runtime.status === "playing" ? <>
       <div className={`${styles.v2Board} ${rendererClass}`} style={boardStyle} role="application" aria-label={`${title} game board`} onPointerDown={(event) => { pointerStart.current = { x: event.clientX, y: event.clientY }; }} onPointerUp={(event) => finishSwipe(event.clientX, event.clientY)}>
         <p className={styles.instructions}>{definition.texts["welcome.instructions"]}</p>
-        <div className={styles.entityLayer}>{definition.entities.map((entity, index) => <V2Entity key={entity.id} entity={entity} runtime={runtime} index={index} total={definition.entities.length} renderer={definition.renderer.id} assetVisual={entity.content.kind === "asset" ? resolveAssetVisual(definition.assets, entity.content.value, "", entity.label) : undefined} onActivate={() => activate(entity)} onDrag={() => setDragged(entity.id)} onDrop={() => { if (dragged) setRuntime((current) => dispatchGameEventV2(definition, current, { type: "ENTITY_DROPPED", entityId: dragged, targetEntityId: entity.id })); setDragged(undefined); }} draggable={definition.interactions.some((item) => item.type === "drag_drop.v1" && matchesTarget(entity, item.target))} />)}</div>
+        <div className={styles.entityLayer}>{definition.entities.map((entity, index) => <V2Entity key={entity.id} entity={entity} runtime={runtime} index={index} total={definition.entities.length} renderer={definition.renderer.id} assetVisual={entity.content.kind === "asset" ? resolveAssetVisual(definition.assets, entity.content.value, "", entity.label) : undefined} onActivate={() => activate(entity)} onDrag={() => setDragged(entity.id)} onDrop={() => { if (dragged) sendEvent({ type: "ENTITY_DROPPED", entityId: dragged, targetEntityId: entity.id }); setDragged(undefined); }} draggable={definition.interactions.some((item) => item.type === "drag_drop.v1" && matchesTarget(entity, item.target))} />)}</div>
         {textInteraction && <form className={styles.textInput} onSubmit={submitText}><input value={text} onChange={(event) => setText(event.target.value)} placeholder="Type your answer" aria-label="Your answer" /><button type="submit">Submit</button></form>}
         {directional && <div className={styles.directions} aria-label="Movement controls">{["left", "up", "down", "right"].map((item) => <button type="button" key={item} onClick={() => direction(item)} aria-label={item}>{item === "left" ? "←" : item === "right" ? "→" : item === "up" ? "↑" : "↓"}</button>)}</div>}
       </div>
-      <p className={styles.hint}>Built from {definition.renderer.id} and {definition.interactions.map((item) => item.type).join(", ")}.</p>
-    </> : <Result outcome={runtime.outcome ?? "win"} title={definition.texts[runtime.resultTextKey ?? (runtime.outcome === "lose" ? definition.outcomes.lose?.textKey ?? "result.loseTitle" : definition.outcomes.win.textKey)] ?? definition.texts[runtime.outcome === "lose" ? "result.loseTitle" : "result.winTitle"]} score={score} onRestart={() => { setRuntime(createRuntimeV2(definition)); setText(""); }} />}
+      <p className={styles.hint}>{shared ? "Every move contributes to your shared score." : <>Built from {definition.renderer.id} and {definition.interactions.map((item) => item.type).join(", ")}.</>}</p>
+    </> : <Result outcome={runtime.outcome ?? "win"} title={definition.texts[runtime.resultTextKey ?? (runtime.outcome === "lose" ? definition.outcomes.lose?.textKey ?? "result.loseTitle" : definition.outcomes.win.textKey)] ?? definition.texts[runtime.outcome === "lose" ? "result.loseTitle" : "result.winTitle"]} score={score} onRestart={() => { if (shared) shared.restart(); else setRuntime(createRuntimeV2(definition)); setText(""); }} />}
   </GameFrame>;
 }
 
@@ -148,7 +151,7 @@ function backgroundValue(definition: GameDefinitionV2) {
 }
 
 function GameFrame({ title, description, visuals, score, seconds, scoreLabel, timerLabel, children }: { title: string; description: string; visuals: { backgroundColor: string; accentColor: string; textColor: string; cardColor: string }; score: number; seconds: number; scoreLabel: string; timerLabel: string; children: React.ReactNode }) {
-  return <main className={styles.stage}><section className={styles.phone} style={{ "--game-bg": visuals.backgroundColor, "--game-accent": visuals.accentColor, "--game-text": visuals.textColor, "--game-card": visuals.cardColor } as React.CSSProperties}><AppHeader backHref="/footer/library" /><div className={styles.content}><p className={styles.eyebrow}>SOLO PLAYGROUND</p><h1>{title}</h1><p className={styles.description}>{description}</p><div className={styles.hud}><div><small>{scoreLabel}</small><strong>{score}</strong></div><div><small>{timerLabel}</small><strong>{seconds ? `${seconds}s` : "∞"}</strong></div></div>{children}</div></section></main>;
+  return <main className={styles.stage}><section className={styles.phone} style={{ "--game-bg": visuals.backgroundColor, "--game-accent": visuals.accentColor, "--game-text": visuals.textColor, "--game-card": visuals.cardColor } as React.CSSProperties}><AppHeader backHref="/footer/library" /><div className={styles.content}><p className={styles.eyebrow}>PLIZZY PLAYGROUND</p><h1>{title}</h1><p className={styles.description}>{description}</p><div className={styles.hud}><div><small>{scoreLabel}</small><strong>{score}</strong></div><div><small>{timerLabel}</small><strong>{seconds ? `${seconds}s` : "∞"}</strong></div></div>{children}</div></section></main>;
 }
 
 function Result({ outcome, title, score, onRestart }: { outcome: "win" | "lose"; title: string; score: number; onRestart(): void }) {
@@ -166,13 +169,13 @@ export default function GamePlayground({ gameId }: { gameId: string }) {
     const stored = gameRow as StoredGame; if (!stored.latest_version_id) { setError("This game does not have a playable version yet."); return; }
     const { data: versionRow, error: versionError } = await supabase.from("game_versions").select("id, game_mode, definition").eq("id", stored.latest_version_id).maybeSingle();
     if (versionError || !versionRow) { setError(versionError?.message ?? "The playable version could not be found."); return; }
-    const version = versionRow as StoredVersion; if (version.game_mode !== "single_player") { setError("Multiplayer execution will be added after the single-player runtime is complete."); return; }
+    const version = versionRow as StoredVersion; if (version.game_mode !== "single_player") { setError("Open this game from its room to play together."); return; }
     const v2 = validateGameDefinitionV2(version.definition);
     if (v2.valid) setGame({ title: stored.title, definition: await resolveStoredAssetUrls(v2.value, supabase) });
     else { const v1 = validateGameDefinition(version.definition, "single_player"); if (v1.valid) setGame({ title: stored.title, definition: v1.value }); else { setError("This saved game definition is not compatible with a supported runtime."); return; } }
     await supabase.from("user_games").upsert({ user_id: user.id, game_id: stored.id, is_saved: true, last_played_at: new Date().toISOString() }, { onConflict: "user_id,game_id" });
   } void loadGame(); }, [gameId]);
-  if (error) return <main className={styles.stage}><section className={styles.phone}><AppHeader backHref="/footer/library" /><div className={styles.failure}><span>✦</span><h1>Not ready to play</h1><p>{error}</p><Link href="/footer/library">Back to your library</Link></div></section></main>;
+  if (error) return <main className={styles.stage}><section className={styles.phone}><AppHeader backHref="/footer/library" /><div className={styles.failure}><span>✦</span><h1>Not ready to play</h1><p>{error}</p><Link href="/footer/rooms">Open your rooms</Link><Link href="/footer/library">Back to your library</Link></div></section></main>;
   if (!game) return <main className={styles.stage}><section className={styles.phone}><AppHeader backHref="/footer/library" /><div className={styles.status}><i /><i /><i /><p>Building your playground…</p></div></section></main>;
   return game.definition.schemaVersion === 2 ? <V2Game gameId={gameId} title={game.title} definition={game.definition} /> : <LegacyGame gameId={gameId} title={game.title} definition={game.definition} />;
 }

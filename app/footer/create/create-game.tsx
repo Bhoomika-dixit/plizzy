@@ -10,12 +10,13 @@ import styles from "./create-game.module.css";
 type GameMode = "single_player" | "multiplayer";
 
 const modes: Array<{ mode: GameMode; title: string; description: string; icon: string }> = [
+  { mode: "multiplayer", title: "Play together", description: "Solve a shared board with friends in an invite-only room.", icon: "🎲" },
   { mode: "single_player", title: "Single player", description: "Make something just for you. You can play it locally whenever you like.", icon: "✦" },
 ];
 
 export default function CreateGame({ roomId }: { roomId?: string }) {
   const router = useRouter();
-  const [mode, setMode] = useState<GameMode | null>(null);
+  const [mode, setMode] = useState<GameMode | null>(roomId ? "multiplayer" : null);
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
 
@@ -32,7 +33,7 @@ export default function CreateGame({ roomId }: { roomId?: string }) {
     <div className={styles.content}>
       <p className={styles.overline}>CREATE A GAME</p>
       <h1>Who&apos;s playing?</h1>
-      <p className={styles.intro}>{roomId ? "Multiplayer creation will return after the single-player V2 runtime is complete." : "Start with single player. You can shape the mechanics and all the wonderfully silly details next."}</p>
+      <p className={styles.intro}>{roomId ? "Create a cooperative game for this room." : "Choose a solo adventure or bring your friends along."}</p>
       <div className={styles.options} role="radiogroup" aria-label="Game type">
         {!roomId && modes.map((item) => <button key={item.mode} type="button" role="radio" aria-checked={mode === item.mode} className={`${styles.card} ${mode === item.mode ? styles.selected : ""}`} onClick={() => { setMode(item.mode); setError(""); }}>
           <span className={styles.icon} aria-hidden="true">{item.icon}</span><span><strong>{item.title}</strong><small>{item.description}</small></span><span className={styles.check} aria-hidden="true">{mode === item.mode ? "✓" : ""}</span>
