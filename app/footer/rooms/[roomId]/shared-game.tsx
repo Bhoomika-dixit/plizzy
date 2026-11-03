@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameDefinitionV2 } from "@/agent-harness/game-definition-v2";
 import type { RuntimeStateV2 } from "@/agent-harness/runtime-v2";
 import SideScroller, { type SimulationState } from "@/catalogue/renderers/side-scroller";
+import Link from "next/link";
+import Icon from "@/app/components/ui-icon";
+import PlayArt from "@/app/components/play-art";
 import { GenericV2Game } from "@/app/play/[gameId]/playground";
 import { multiplayerRequest, MultiplayerRequestError } from "@/lib/multiplayer/client";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -12,7 +15,7 @@ import styles from "../rooms.module.css";
 
 type Snapshot = { round: { room_id: string; revision: number; game_version_id: string; state: RuntimeStateV2 } | null; definition?: GameDefinitionV2; host: boolean; userId: string; serverNow?: number; clockOffset?: number };
 
-export default function SharedGame({ roomId, versionId, title }: { roomId: string; versionId?: string; title: string }) {
+export default function SharedGame({ roomId, versionId, title, members = [] }: { roomId: string; versionId?: string; title: string; members?: { id: string; name: string }[] }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -103,18 +106,18 @@ export default function SharedGame({ roomId, versionId, title }: { roomId: strin
   const restart = useCallback(() => { void request("start"); }, [request]);
   const round = snapshot?.round;
   return <section className={styles.shared} aria-label="Shared game">
-    <h2>Play together</h2><p role="status">{connected ? "Live · Supabase Realtime connected" : "Connecting live updates…"}</p>
-    {error && <p role="alert">{error}</p>}
+    <div className={styles.sharedHeading}><div><p className="eyebrow">A LITTLE FRIENDLY PLAY</p><h2>{round ? "On the playground" : "Ready, set, together."}</h2></div><span className={styles.liveBadge} role="status"><i className={connected ? styles.connected : ""} />{connected ? "Room is live" : "Connecting…"}</span></div>
+    {error && <p className="form-error" role="alert">{error}</p>}
     {!snapshot && <p role="status">Connecting to your room…</p>}
-    {snapshot?.host && versionId && <button disabled={busy} onClick={restart}>{round ? "Start a new round" : "Start round"}</button>}
-    {snapshot && !round && !snapshot.host && <p role="status">Waiting for the host to start…</p>}
+    {snapshot && !round && <div className={styles.lobby}><PlayArt /><h3>Your next good time starts here.</h3><p>{snapshot.host ? "Choose a game from the shelf. When your people are here, start the first round." : "Make yourself comfortable. Your host will start the game when everyone is here."}</p><span>{title}</span></div>}
+    {snapshot?.host && versionId && <button className="button" disabled={busy} onClick={restart}><Icon name="play" size={16} />{round ? "Start a new round" : "Start round"}</button>}
     {round && snapshot?.definition && (isSession(round.state)
-      ? <SessionGame definition={snapshot.definition} state={round.state} userId={snapshot.userId} busy={busy} clockOffset={snapshot.clockOffset ?? 0} title={title} dispatch={dispatch} restart={snapshot.host ? restart : () => setError("Only the host can restart.")} />
-      : <p>This older round needs a new multiplayer contract. Regenerate the game and start a new round.</p>)}
+      ? <SessionGame definition={snapshot.definition} state={round.state} userId={snapshot.userId} members={members} busy={busy} clockOffset={snapshot.clockOffset ?? 0} title={title} dispatch={dispatch} restart={snapshot.host ? restart : () => setError("Only the host can restart.")} />
+      : <div className={styles.lobby}><PlayArt kind="cards" /><h3>This little world needs a fresh start.</h3><p>This older game needs to be recreated for the updated multiplayer experience.</p>{snapshot.host && <Link href={`/footer/create?room=${roomId}`} className="button button-secondary">Create a new game <Icon name="plus" size={16} /></Link>}</div>)}
   </section>;
 }
 
-function SessionGame({ definition, state, userId, busy, clockOffset, title, dispatch, restart }: { definition: GameDefinitionV2; state: SessionState; userId: string; busy: boolean; clockOffset: number; title: string; dispatch(event: MultiplayerInput): Promise<void>; restart(): void }) {
+function SessionGame({ definition, state, userId, members, busy, clockOffset, title, dispatch, restart }: { definition: GameDefinitionV2; state: SessionState; userId: string; members: { id: string; name: string }[]; busy: boolean; clockOffset: number; title: string; dispatch(event: MultiplayerInput): Promise<void>; restart(): void }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(timer); }, []);
   const index = state.session.players.findIndex(player => player.id === userId);
@@ -124,9 +127,9 @@ function SessionGame({ definition, state, userId, busy, clockOffset, title, disp
   const winners = state.session.players.filter(player => state.session.winners.includes(player.id)).map(player => player.symbol).join(", ");
   const result = state.session.winners.length > 1 && definition.multiplayer?.objective === "competitive" ? `Round tied · ${winners}` : winners ? `Round complete · ${winners} won` : "Round complete · no winner";
   return <div>
-    <p role="status">{remaining ? `Starting in ${remaining}…` : state.status === "finished" ? result : index < 0 ? "Watching this round" : definition.multiplayer?.turns === "round_robin" ? `${state.session.players[state.session.turn].symbol}'s turn · You are ${state.session.players[index].symbol}` : `Playing as ${state.session.players[index].symbol}`}</p>
-    <ol aria-label="Player scores">{state.session.players.map(player => <li key={player.id}>{player.symbol}{player.id === userId ? " (you)" : ""}: {player.score}{player.outcome ? ` · ${definition.multiplayer?.board === "individual" ? "finished" : player.outcome}` : ""}</li>)}</ol>
-    {state.status === "finished" ? <p>The round is complete. The host can start another round.</p> : definition.multiplayer?.board === "individual" && board.status === "finished" ? <p>Your board is complete. Waiting for the other players to finish…</p> : definition.renderer.id === "side_scroller.v1"
+    <p className={styles.turnStatus} role="status">{remaining ? `A little countdown… ${remaining}` : state.status === "finished" ? result : index < 0 ? "You’re watching this round" : definition.multiplayer?.turns === "round_robin" ? `${index === state.session.turn ? "Your turn" : `${state.session.players[state.session.turn].symbol}'s turn`} · You are ${state.session.players[index].symbol}` : `Playing as ${state.session.players[index].symbol}`}</p>
+    <ol className={styles.scoreboard} aria-label="Player scores">{state.session.players.map(player => <li className={state.session.winners.includes(player.id) ? styles.winningScore : ""} key={player.id}><span className={styles.playerSymbol}>{player.symbol}</span><span><strong>{members.find(member => member.id === player.id)?.name ?? player.symbol}{player.id === userId ? " (you)" : ""}</strong><small>{player.outcome ? "Round complete" : "In the game"}</small></span><b>{player.score}</b></li>)}</ol>
+    {state.status === "finished" ? <div className={styles.roundResult}><span><Icon name="spark" size={32} /></span><h3>{state.session.winners.length ? "A little round. A big good time." : "Every round is a new adventure."}</h3><p>The host can start another round whenever you&apos;re ready.</p></div> : definition.multiplayer?.board === "individual" && board.status === "finished" ? <p className={styles.turnStatus}>Your board is complete. Cheering on the rest of the bunch…</p> : definition.renderer.id === "side_scroller.v1"
       ? <PhysicsBoard key={`${state.session.startedAt}:${userId}`} definition={definition} state={state} userId={index < 0 ? state.session.players[0].id : userId} clockOffset={clockOffset} disabled={remaining > 0 || index < 0 || board.status !== "playing"} dispatch={dispatch} />
       : <fieldset disabled={disabled} className={styles.sharedBoard}><GenericV2Game key={state.session.startedAt} gameId="session" title={definition.metadata.title || title} definition={definition} shared={{ state: board, dispatch, restart, disabled }} /></fieldset>}
   </div>;

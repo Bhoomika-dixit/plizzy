@@ -1,52 +1,13 @@
 "use client";
-
 import Link from "next/link";
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
-import FooterNav from "@/app/components/footer-nav";
-import AppHeader from "@/app/components/app-header";
+import {type FormEvent,useState} from "react";
+import {useRouter} from "next/navigation";
+import Icon from "@/app/components/ui-icon";
+import PlayArt from "@/app/components/play-art";
 import styles from "./create-game.module.css";
-
-type GameMode = "single_player" | "multiplayer";
-
-const modes: Array<{ mode: GameMode; title: string; description: string; icon: string }> = [
-  { mode: "multiplayer", title: "Play together", description: "Solve a shared board with friends in an invite-only room.", icon: "🎲" },
-  { mode: "single_player", title: "Single player", description: "Make something just for you. You can play it locally whenever you like.", icon: "✦" },
-];
-
-export default function CreateGame({ roomId }: { roomId?: string }) {
-  const router = useRouter();
-  const [mode, setMode] = useState<GameMode | null>(roomId ? "multiplayer" : null);
-  const [title, setTitle] = useState("");
-  const [error, setError] = useState("");
-
-  function continueToCreator(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!mode) return;
-    const trimmedTitle = title.trim();
-    if (!trimmedTitle) { setError("Give your game a name first."); return; }
-    router.push(`/create-game?mode=${mode}&title=${encodeURIComponent(trimmedTitle)}${roomId ? `&room=${encodeURIComponent(roomId)}` : ""}`);
-  }
-
-  return <main className="footer-demo"><section className={`footer-phone ${styles.phone}`}>
-    <AppHeader />
-    <div className={styles.content}>
-      <p className={styles.overline}>CREATE A GAME</p>
-      <h1>Who&apos;s playing?</h1>
-      <p className={styles.intro}>{roomId ? "Create a cooperative game for this room." : "Choose a solo adventure or bring your friends along."}</p>
-      <div className={styles.options} role="radiogroup" aria-label="Game type">
-        {!roomId && modes.map((item) => <button key={item.mode} type="button" role="radio" aria-checked={mode === item.mode} className={`${styles.card} ${mode === item.mode ? styles.selected : ""}`} onClick={() => { setMode(item.mode); setError(""); }}>
-          <span className={styles.icon} aria-hidden="true">{item.icon}</span><span><strong>{item.title}</strong><small>{item.description}</small></span><span className={styles.check} aria-hidden="true">{mode === item.mode ? "✓" : ""}</span>
-        </button>)}
-      </div>
-      {mode && <form className={styles.form} onSubmit={continueToCreator}>
-        <label>What should we call it?<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="My brilliant game" maxLength={120} required /></label>
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <button className="primary-action" type="submit">Continue to game creator</button>
-      </form>}
-      {!mode && <p className={styles.hint}>{roomId ? "Single-player games can still be created from the Create tab." : "Pick one to continue."}</p>}
-      <Link className={styles.back} href="/">Back to home</Link>
-    </div>
-    <FooterNav active="create" />
-  </section></main>;
+type GameMode="single_player"|"multiplayer";
+export default function CreateGame({roomId,initialMode,initialTitle="",initialIdea=""}:{roomId?:string;initialMode?:GameMode;initialTitle?:string;initialIdea?:string}){
+const router=useRouter();const [mode,setMode]=useState<GameMode>(roomId?"multiplayer":initialMode??"single_player");const [title,setTitle]=useState(initialTitle);const [error,setError]=useState("");
+function continueToCreator(event:FormEvent<HTMLFormElement>){event.preventDefault();if(!title.trim()){setError("Every little world needs a name.");return;}router.push("/create-game?mode="+mode+"&title="+encodeURIComponent(title.trim())+(roomId?"&room="+encodeURIComponent(roomId):"")+(initialIdea&&mode===initialMode?"&idea="+encodeURIComponent(initialIdea):""));}
+return <div className={styles.studio}><div className="page-heading"><div><p className="eyebrow">THE CREATION STUDIO</p><h1>A little idea. Endless possibilities.</h1><p>Let&apos;s make something only you would dream up.</p></div><span className="badge"><Icon name="spark" size={13}/>Made by you</span></div><div className={styles.layout}><section className={styles.formPanel}><div className="step-label"><span className="current">1</span>Set the scene<i/><span>2</span>Dream it up</div><h2>Who&apos;s coming to play?</h2><p className={styles.intro}>{roomId?"Your new game will be added to this room.":"A solo escape or a shared adventure. You decide."}</p><div className={styles.options} role="radiogroup" aria-label="Game type" onKeyDown={event=>{if(!roomId&&["ArrowLeft","ArrowRight","ArrowUp","ArrowDown"].includes(event.key)){event.preventDefault();const next=mode==="single_player"?"multiplayer":"single_player";setMode(next);event.currentTarget.querySelectorAll<HTMLButtonElement>("button[role=radio]")[next==="single_player"?0:1]?.focus();}}}>{(roomId?[{mode:"multiplayer" as const,title:"Play together",text:"A game for your room",icon:"people" as const}]:[{mode:"single_player" as const,title:"Just me",text:"My own little escape",icon:"play" as const},{mode:"multiplayer" as const,title:"With friends",text:"More people, more possibilities",icon:"people" as const}]).map(item=><button type="button" key={item.mode} role="radio" tabIndex={mode===item.mode?0:-1} aria-checked={mode===item.mode} className={styles.modeCard+" "+(mode===item.mode?styles.selected:"")} onClick={()=>setMode(item.mode)}><span className={styles.modeIcon}><Icon name={item.icon} size={26}/></span><strong>{item.title}</strong><small>{item.text}</small><span className={styles.radio}>{mode===item.mode&&<Icon name="check" size={12}/>}</span></button>)}</div><form onSubmit={continueToCreator}><label className="field">Give your game a name<input value={title} onChange={event=>setTitle(event.target.value)} placeholder="Something wonderfully you…" maxLength={120} required/><small>You can make it as silly or as simple as you like.</small></label>{error&&<p role="alert" className="form-error">{error}</p>}<button type="submit" className="button">Next, the fun part <Icon name="arrow" size={18}/></button></form><Link href="/footer/discover" className={styles.ideaLink}>Need a little inspiration? Explore game ideas <Icon name="arrow" size={15}/></Link></section><aside className={styles.sidePanel}><PlayArt/><p className="eyebrow">FROM WHAT IF TO LET&apos;S PLAY</p><h2>You bring the spark.<br/>We&apos;ll bring it to life.</h2><ol><li><span>01</span><div><strong>Set the scene</strong><p>Pick your people and name your world.</p></div></li><li><span>02</span><div><strong>Let your imagination wander</strong><p>Tell us what your game should feel like.</p></div></li><li><span>03</span><div><strong>Make a little time for fun</strong><p>Your game is saved and ready to play.</p></div></li></ol><p className={styles.sideNote}><Icon name="check" size={14}/>Your games stay in your library.</p></aside></div></div>;
 }

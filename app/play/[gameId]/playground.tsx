@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import AppHeader from "@/app/components/app-header";
+import Icon from "@/app/components/ui-icon";
+import PlayArt from "@/app/components/play-art";
 import { GameDefinitionV1, validateGameDefinition } from "@/agent-harness/game-definition";
 import { createRuntime, dispatchTap, RuntimeState, tickRuntime } from "@/agent-harness/runtime";
 import { GameDefinitionV2, GameEntityV2, validateGameDefinitionV2 } from "@/agent-harness/game-definition-v2";
@@ -60,7 +61,7 @@ function SideScrollerGame({ title, definition }: { gameId: string; title: string
   const restart = () => { setSnapshot({ score: 0, secondsRemaining: initialSeconds, status: "playing" }); setRunKey((value) => value + 1); };
   const resultKey = snapshot.resultTextKey ?? (snapshot.outcome === "lose" ? definition.outcomes.lose?.textKey ?? "result.loseTitle" : definition.outcomes.win.textKey);
   return <GameFrame title={title} description={definition.metadata.description} visuals={definition.visuals} score={snapshot.score} seconds={snapshot.secondsRemaining} scoreLabel={definition.texts["hud.scoreLabel"]} timerLabel={definition.texts["hud.timerLabel"]}>
-    {snapshot.status === "playing" ? <><SideScroller key={runKey} definition={definition} onSnapshot={receiveSnapshot} onInteraction={receiveInteraction} /><p className={styles.hint}>Executable template: side_scroller.v1</p></> : <Result outcome={snapshot.outcome ?? "lose"} title={definition.texts[resultKey] ?? definition.texts["result.loseTitle"]} score={snapshot.score} onRestart={restart} />}
+    {snapshot.status === "playing" ? <><SideScroller key={runKey} definition={definition} onSnapshot={receiveSnapshot} onInteraction={receiveInteraction} /><p className={styles.hint}>Tap, click, or press Space to fly.</p></> : <Result outcome={snapshot.outcome ?? "lose"} title={definition.texts[resultKey] ?? definition.texts["result.loseTitle"]} score={snapshot.score} onRestart={restart} />}
   </GameFrame>;
 }
 
@@ -112,7 +113,7 @@ export function GenericV2Game({ title, definition, shared }: { gameId: string; t
     direction(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
   }
   const rendererClass = styles[definition.renderer.id.split(".")[0].replace("card_grid", "cardGrid") as keyof typeof styles] ?? styles.arena;
-  return <GameFrame title={title} description={definition.metadata.description} visuals={definition.visuals} score={score} seconds={runtime.secondsRemaining} scoreLabel={definition.texts["hud.scoreLabel"]} timerLabel={definition.texts["hud.timerLabel"]}>
+  return <GameFrame embedded={Boolean(shared)} title={title} description={definition.metadata.description} visuals={definition.visuals} score={score} seconds={runtime.secondsRemaining} scoreLabel={definition.texts["hud.scoreLabel"]} timerLabel={definition.texts["hud.timerLabel"]}>
     {runtime.status === "playing" ? <>
       <div className={`${styles.v2Board} ${rendererClass}`} style={boardStyle} role="application" aria-label={`${title} game board`} onPointerDown={(event) => { pointerStart.current = { x: event.clientX, y: event.clientY }; }} onPointerUp={(event) => finishSwipe(event.clientX, event.clientY)}>
         <p className={styles.instructions}>{definition.texts["welcome.instructions"]}</p>
@@ -120,7 +121,7 @@ export function GenericV2Game({ title, definition, shared }: { gameId: string; t
         {textInteraction && <form className={styles.textInput} onSubmit={submitText}><input value={text} onChange={(event) => setText(event.target.value)} placeholder="Type your answer" aria-label="Your answer" /><button type="submit">Submit</button></form>}
         {directional && <div className={styles.directions} aria-label="Movement controls">{["left", "up", "down", "right"].map((item) => <button type="button" key={item} onClick={() => direction(item)} aria-label={item}>{item === "left" ? "←" : item === "right" ? "→" : item === "up" ? "↑" : "↓"}</button>)}</div>}
       </div>
-      <p className={styles.hint}>{shared ? "Play by the generated multiplayer rules." : <>Built from {definition.renderer.id} and {definition.interactions.map((item) => item.type).join(", ")}.</>}</p>
+      <p className={styles.hint}>{shared ? "Your people. A little friendly play." : "Your rules. Your little world. Let’s play."}</p>
     </> : <Result outcome={runtime.outcome ?? "win"} title={definition.texts[runtime.resultTextKey ?? (runtime.outcome === "lose" ? definition.outcomes.lose?.textKey ?? "result.loseTitle" : definition.outcomes.win.textKey)] ?? definition.texts[runtime.outcome === "lose" ? "result.loseTitle" : "result.winTitle"]} score={score} onRestart={() => { if (shared) shared.restart(); else setRuntime(createRuntimeV2(definition)); setText(""); }} />}
   </GameFrame>;
 }
@@ -150,12 +151,12 @@ function backgroundValue(definition: GameDefinitionV2) {
   return visual.kind === "image" ? `center / cover no-repeat url("${visual.value}")` : visual.value || `linear-gradient(145deg, ${definition.visuals.backgroundColor}, ${definition.visuals.cardColor})`;
 }
 
-function GameFrame({ title, description, visuals, score, seconds, scoreLabel, timerLabel, children }: { title: string; description: string; visuals: { backgroundColor: string; accentColor: string; textColor: string; cardColor: string }; score: number; seconds: number; scoreLabel: string; timerLabel: string; children: React.ReactNode }) {
-  return <main className={styles.stage}><section className={styles.phone} style={{ "--game-bg": visuals.backgroundColor, "--game-accent": visuals.accentColor, "--game-text": visuals.textColor, "--game-card": visuals.cardColor } as React.CSSProperties}><AppHeader backHref="/footer/library" /><div className={styles.content}><p className={styles.eyebrow}>PLIZZY PLAYGROUND</p><h1>{title}</h1><p className={styles.description}>{description}</p><div className={styles.hud}><div><small>{scoreLabel}</small><strong>{score}</strong></div><div><small>{timerLabel}</small><strong>{seconds ? `${seconds}s` : "∞"}</strong></div></div>{children}</div></section></main>;
+function GameFrame({ title, description, visuals, score, seconds, scoreLabel, timerLabel, children, embedded = false }: { title: string; description: string; visuals: { backgroundColor: string; accentColor: string; textColor: string; cardColor: string }; score: number; seconds: number; scoreLabel: string; timerLabel: string; children: React.ReactNode; embedded?: boolean }) {
+  return <div className={styles.stage} data-embedded={embedded}><section className={styles.phone} style={{ "--game-bg": visuals.backgroundColor, "--game-accent": visuals.accentColor, "--game-text": visuals.textColor, "--game-card": visuals.cardColor } as React.CSSProperties}><div className={styles.content}><div className={styles.gameTop}><p className={styles.eyebrow}>MAKE A LITTLE TIME FOR PLAY</p><h1>{title}</h1><p className={styles.description}>{description}</p></div><div className={styles.hud}><div><Icon name="spark" size={20} /><span><small>{scoreLabel}</small><strong>{score}</strong></span></div><div><Icon name="clock" size={20} /><span><small>{timerLabel}</small><strong>{seconds ? `${seconds}s` : "∞"}</strong></span></div></div>{children}</div></section></div>;
 }
 
 function Result({ outcome, title, score, onRestart }: { outcome: "win" | "lose"; title: string; score: number; onRestart(): void }) {
-  return <div className={styles.result}><span>{outcome === "win" ? "✦" : "◇"}</span><p className={styles.eyebrow}>ROUND COMPLETE</p><h2>{title}</h2><strong>{score}</strong><p>points scored. This game remains saved in your library.</p><div><button type="button" onClick={onRestart}>Play again</button><Link href="/footer/library">Back to library</Link></div></div>;
+  return <div className={styles.result}><PlayArt kind={outcome === "win" ? "spark" : "cards"} /><p className={styles.eyebrow}>A LITTLE ROUND, A LITTLE JOY</p><h2>{title}</h2><strong>{score}</strong><p>points made. Another little adventure is always waiting.</p><div><button type="button" onClick={onRestart}>One more round <Icon name="play" size={14} /></button><Link href="/footer/library">Back to your worlds</Link></div></div>;
 }
 
 export default function GamePlayground({ gameId }: { gameId: string }) {
@@ -175,7 +176,7 @@ export default function GamePlayground({ gameId }: { gameId: string }) {
     else { const v1 = validateGameDefinition(version.definition, "single_player"); if (v1.valid) setGame({ title: stored.title, definition: v1.value }); else { setError("This saved game definition is not compatible with a supported runtime."); return; } }
     await supabase.from("user_games").upsert({ user_id: user.id, game_id: stored.id, is_saved: true, last_played_at: new Date().toISOString() }, { onConflict: "user_id,game_id" });
   } void loadGame(); }, [gameId]);
-  if (error) return <main className={styles.stage}><section className={styles.phone}><AppHeader backHref="/footer/library" /><div className={styles.failure}><span>✦</span><h1>Not ready to play</h1><p>{error}</p><Link href="/footer/rooms">Open your rooms</Link><Link href="/footer/library">Back to your library</Link></div></section></main>;
-  if (!game) return <main className={styles.stage}><section className={styles.phone}><AppHeader backHref="/footer/library" /><div className={styles.status}><i /><i /><i /><p>Building your playground…</p></div></section></main>;
+  if (error) return <div className={styles.stage}><section className={styles.phone}><div className={styles.failure}><PlayArt kind="cards" /><h1>This little world isn’t ready yet.</h1><p>{error}</p><Link href="/footer/rooms">Open your rooms</Link><Link href="/footer/library">Back to your library</Link></div></section></div>;
+  if (!game) return <div className={styles.stage}><section className={styles.phone}><div className={styles.status} role="status"><i /><i /><i /><p>Opening your little world…</p></div></section></div>;
   return game.definition.schemaVersion === 2 ? <V2Game gameId={gameId} title={game.title} definition={game.definition} /> : <LegacyGame gameId={gameId} title={game.title} definition={game.definition} />;
 }

@@ -1,0 +1,1 @@
+export default function PageLoading(){return <div role="status" aria-label="Opening your next little adventure" className="page-loading"><div className="skeleton"/><div className="skeleton"/><div className="skeleton"/><span className="sr-only">One little moment…</span></div>;}
