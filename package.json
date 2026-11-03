@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:multiplayer": "node --test tests/multiplayer.test.cjs",
-    "test:auth": "node --test tests/auth.test.cjs"
+    "test:auth": "node --test tests/auth.test.cjs",
+    "test:generation-limit": "node --test tests/generation-limit.test.cjs"
   },
   "dependencies": {
     "@langfuse/otel": "^5.13.0",
@@ -16,7 +17,7 @@
     "@opentelemetry/sdk-node": "^0.223.0",
     "@supabase/supabase-js": "^2.117.2",
     "ai": "^7.0.153",
-    "next": "16.2.3",
+    "next": "16.4.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
@@ -26,7 +27,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.3",
+    "eslint-config-next": "16.4.4",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
