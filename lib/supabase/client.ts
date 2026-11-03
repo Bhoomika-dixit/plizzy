@@ -10,7 +10,12 @@ export function getSupabaseClient() {
   if (!url || !publishableKey) return null;
 
   client ??= createClient(url, publishableKey, {
-    auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      // Sign-in completes only after the player enters their email code.
+      detectSessionInUrl: false,
+    },
   });
   return client;
 }
