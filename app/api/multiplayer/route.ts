@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { validateGameDefinitionV2 } from "@/agent-harness/game-definition-v2";
-import { createRuntimeV2, dispatchGameEventV2, tickRuntimeV2, type GameEventV2, type RuntimeStateV2 } from "@/agent-harness/runtime-v2";
-import { createTicTacToe, isTicTacToe, playTicTacToe } from "@/lib/multiplayer/tic-tac-toe";
+import { type GameEventV2, type RuntimeStateV2 } from "@/agent-harness/runtime-v2";
+import { advanceSession, createSession, isSession, moveSession, type SessionState } from "@/agent-harness/multiplayer-runtime";
 
 export const runtime = "nodejs";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,61 +62,55 @@ export async function POST(request: Request) {
     ]);
     if (!shelf) return failure("This game is not on the room shelf.", 403);
     const parsed = validateGameDefinitionV2(version?.definition);
-    if (!parsed.valid || version?.game_mode !== "multiplayer" || parsed.value.renderer.id === "side_scroller.v1") return failure("This version does not support shared play.");
+    if (!parsed.valid || version?.game_mode !== "multiplayer") return failure("This saved version cannot be played by this runtime.");
     const definition = parsed.value;
+    if (!definition.multiplayer) {
+      if (body.action !== "sync") return failure("This legacy game needs regeneration with a multiplayer contract. Its existing rules have not been silently changed.");
+      return Response.json({ round, definition, userId: user.id, host, needsRegeneration: true });
+    }
     let state: RuntimeStateV2 = round?.state;
     const now = Date.now();
-    let clock = round ? Date.parse(round.updated_at) : now;
+    const clock = now;
     if (body.action === "start") {
-      const { count } = await admin.from("room_members").select("user_id", { count: "exact", head: true }).eq("room_id", body.roomId);
-      if ((count ?? 0) < 2) return failure("Invite at least one friend before starting.");
       if (round && body.revision !== round.revision) return failure("The round changed. Please try again.", 409);
-      if (isTicTacToe(definition)) {
-        const { data: opponents, error: playersError } = await admin.from("room_members").select("user_id").eq("room_id", body.roomId).neq("user_id", user.id).order("joined_at", { ascending: true }).limit(1);
-        if (playersError || !opponents?.[0]) return failure("A second player must join before starting.");
-        state = createTicTacToe(definition, user.id, opponents[0].user_id);
-      } else state = createRuntimeV2(definition);
-      clock = now;
+      const { data: roster, error: rosterError } = await admin.from("room_members").select("user_id").eq("room_id", body.roomId).order("joined_at", { ascending: true });
+      if (rosterError) throw rosterError;
+      const ids = [user.id, ...(roster ?? []).map(player => player.user_id as string).filter(id => id !== user.id)];
+      try { state = createSession(definition, ids.slice(0, definition.multiplayer!.maxPlayers), now); }
+      catch (error) { return failure(error instanceof Error ? error.message : "Invalid roster."); }
+    } else if (!isSession(state)) {
+      // Preserve the old round for inspection but require a new contract-based round.
+      return Response.json({ round, definition, userId: user.id, host });
     } else {
-      for (let i = 0, elapsed = Math.min(3600, Math.floor((now - clock) / 1000)); i < elapsed && state.status === "playing" && state.timerRunning; i++) state = tickRuntimeV2(definition, state);
-      clock += Math.floor((now - clock) / 1000) * 1000;
-      if (body.action === "event") {
-        if (body.revision !== round.revision) return failure("Another player moved. Try again on the updated board.", 409);
-        if (state.status !== "playing") return failure("This round has finished.");
-        const event = body.event as GameEventV2;
-        const interaction = definition.interactions.find((item) => {
-          if (item.event !== event?.type) return false;
-          if (!event.entityId || !item.target.entityIds?.length && !item.target.tags?.length) return true;
-          const entity = definition.entities.find((entry) => entry.id === event.entityId);
-          return item.target.entityIds?.includes(event.entityId) || item.target.tags?.some((tag) => entity?.tags?.includes(tag));
-        });
-        if (!interaction) return failure("Unsupported game action.");
-        const allowed = ["type", "entityId", "targetEntityId", "text", "direction"];
-        if (Object.keys(event).some((name) => !allowed.includes(name)) || Object.values(event).some((value) => typeof value !== "string" || value.length > 500)) return failure("Invalid action.");
-        if (event.direction && !["left", "right", "up", "down"].includes(event.direction)) return failure("Invalid direction.");
-        if (event.entityId) {
-          const entity = definition.entities.find((item) => item.id === event.entityId);
-          if (!entity || !state.entities[entity.id]?.visible || (interaction.target.entityIds?.length || interaction.target.tags?.length) && !interaction.target.entityIds?.includes(entity.id) && !interaction.target.tags?.some((tag) => entity.tags?.includes(tag))) return failure("Invalid target.");
-        } else if (!["text_input.v1", "swipe.v1", "keyboard_move.v1"].includes(interaction.type)) return failure("Select an entity.");
-        if (event.targetEntityId && !state.entities[event.targetEntityId]?.visible) return failure("Invalid drop target.");
-        if (isTicTacToe(definition)) {
-          try { state = playTicTacToe(definition, state, user.id, event.entityId); }
-          catch (error) { return failure(error instanceof Error ? error.message : "Invalid move."); }
-        } else state = dispatchGameEventV2(definition, state, event);
-      }
+      if (body.action === "event" && definition.renderer.id !== "side_scroller.v1" && body.revision !== round.revision) return failure("Another player moved. Try again on the updated board.", 409);
+      try { state = body.action === "event" ? moveSession(definition, state, user.id, body.event as GameEventV2, now) : advanceSession(definition, state, now); }
+      catch (error) { return failure(error instanceof Error ? error.message : "Invalid move."); }
     }
     let saved = round;
     if (body.action !== "sync" || JSON.stringify(state) !== JSON.stringify(round.state)) {
-      const row = { room_id: body.roomId, game_version_id: versionId, state, revision: (round?.revision ?? -1) + 1, updated_at: new Date(clock).toISOString() };
-      const result = round
-        ? await admin.from("multiplayer_rounds").update(row).eq("room_id", body.roomId).eq("revision", round.revision).select().maybeSingle()
-        : await admin.from("multiplayer_rounds").insert(row).select().single();
-      if (result.error?.code === "23505" || !result.error && !result.data) return failure("The round changed. Please try again.", 409);
-      if (result.error) throw result.error;
-      saved = result.data;
+      let expected = round;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const row = { room_id: body.roomId, game_version_id: versionId, state, revision: (expected?.revision ?? -1) + 1, updated_at: new Date(clock).toISOString() };
+        const result = expected
+          ? await admin.from("multiplayer_rounds").update(row).eq("room_id", body.roomId).eq("revision", expected.revision).select().maybeSingle()
+          : await admin.from("multiplayer_rounds").insert(row).select().single();
+        if (result.error?.code === "23505" || !result.error && !result.data) {
+          if (attempt === 2 || body.action === "start" || definition.renderer.id !== "side_scroller.v1") return failure("The round changed. Please try again.", 409);
+          const latest = await admin.from("multiplayer_rounds").select("*").eq("room_id", body.roomId).single();
+          if (latest.error) throw latest.error;
+          if (latest.data.game_version_id !== versionId || !isSession(latest.data.state) || latest.data.state.session.startedAt !== (state as SessionState).session.startedAt) return failure("A new round started. Refresh the board.", 409);
+          expected = latest.data;
+          try { state = body.action === "event" ? moveSession(definition, expected.state, user.id, body.event, Date.now()) : advanceSession(definition, expected.state, Date.now()); }
+          catch (error) { return failure(error instanceof Error ? error.message : "Invalid input."); }
+          continue;
+        }
+        if (result.error) throw result.error;
+        saved = result.data;
+        break;
+      }
     }
     const assets = definition.assets.map((asset) => asset.value?.startsWith("storage://") ? { ...asset, value: asset.fallback } : asset);
-    return Response.json({ round: saved, definition: { ...definition, assets }, userId: user.id, host });
+    return Response.json({ round: saved, definition: { ...definition, assets }, userId: user.id, host, serverNow: Date.now() });
   } catch (error) {
     console.error("Multiplayer request failed", error);
     return failure(error instanceof SyntaxError ? "Invalid request." : "Room service unavailable. Check the multiplayer migration and try again.", 500);

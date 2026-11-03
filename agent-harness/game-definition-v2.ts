@@ -1,4 +1,5 @@
 import { AssetKind, BehaviourId, InteractionId, RendererId, RuleEffectType, RuleEvent, RuleOperator, assetCatalog, behaviourCatalog, interactionCatalog, rendererCatalog, requiredTextSlots, ruleCatalog } from "./tools/catalog";
+import { multiplayerContractErrors, type MultiplayerContract } from "./multiplayer-contract";
 
 export type GameValue = string | number | boolean | null;
 export type ValueSource =
@@ -24,7 +25,7 @@ export type GameEntityV2 = {
   id: string;
   type: string;
   label: string;
-  content: { kind: "emoji" | "text" | "asset"; value: string; backValue?: string };
+  content: { kind: "emoji" | "text" | "asset"; value: string; backValue?: string; stateKey?: string };
   position?: { x: number; y: number };
   grid?: { row: number; column: number };
   size?: number;
@@ -36,8 +37,9 @@ export type GameAssetV2 = { id: string; kind: AssetKind; role: "character" | "ba
 export type GameInteractionV2 = { id: string; type: InteractionId; target: { entityIds?: string[]; tags?: string[] }; event: RuleEvent; config?: Record<string, GameValue> };
 export type GameDefinitionV2 = {
   schemaVersion: 2;
-  metadata: { title: string; description: string; genre: string; launchMode: "single_player" };
-  config: { mode: "single_player"; estimatedDurationMinutes: number; seed: number };
+  metadata: { title: string; description: string; genre: string; launchMode: "single_player" | "multiplayer" };
+  config: { mode: "single_player" | "multiplayer"; estimatedDurationMinutes: number; seed: number };
+  multiplayer?: MultiplayerContract;
   renderer: { id: RendererId; config: { rows?: number; columns?: number; lanes?: number; rings?: number; width?: number; height?: number; backgroundAssetId?: string; playerAssetId?: string; obstacleAssetId?: string; gravity?: number; impulse?: number; obstacleSpeed?: number; gapSize?: number; obstacleWidth?: number; spawnIntervalSeconds?: number; difficultyRate?: number } };
   state: Record<string, GameValue>;
   entities: GameEntityV2[];
@@ -71,11 +73,15 @@ export function validateGameDefinitionV2(value: unknown): { valid: true; value: 
   if (value.schemaVersion !== 2) errors.push("schemaVersion must be 2.");
   const metadata = isObject(value.metadata) ? value.metadata : {};
   const config = isObject(value.config) ? value.config : {};
-  if (typeof metadata.title !== "string" || typeof metadata.description !== "string" || typeof metadata.genre !== "string" || metadata.launchMode !== "single_player") errors.push("metadata must describe a single-player game.");
-  if (config.mode !== "single_player" || !inRange(config.estimatedDurationMinutes, 1, 30) || typeof config.seed !== "number") errors.push("config must contain single_player mode, duration, and seed.");
+  if (typeof metadata.title !== "string" || typeof metadata.description !== "string" || typeof metadata.genre !== "string" || !["single_player", "multiplayer"].includes(String(metadata.launchMode))) errors.push("metadata must describe the requested game mode.");
+  if (!["single_player", "multiplayer"].includes(String(config.mode)) || !inRange(config.estimatedDurationMinutes, 1, 30) || typeof config.seed !== "number") errors.push("config must contain a valid mode, duration, and seed.");
+  if (metadata.launchMode !== config.mode) errors.push("Metadata and config modes must match.");
+  if (config.mode === "multiplayer") errors.push(...multiplayerContractErrors(value.multiplayer));
+  if (config.mode !== "multiplayer" && value.multiplayer !== undefined) errors.push("Solo games cannot define a multiplayer contract.");
   const renderer = isObject(value.renderer) ? value.renderer : {};
   if (typeof renderer.id !== "string" || !(renderer.id in rendererCatalog) || !isObject(renderer.config)) errors.push("renderer must use a catalog renderer and config object.");
   const rendererId = typeof renderer.id === "string" && renderer.id in rendererCatalog ? renderer.id as RendererId : null;
+  if (config.mode === "multiplayer" && rendererId === "side_scroller.v1" && isObject(value.multiplayer) && (value.multiplayer.board !== "individual" || value.multiplayer.turns !== "simultaneous")) errors.push("Side scrollers require individual simultaneous boards.");
   const rendererConfig = isObject(renderer.config) ? renderer.config : {};
   if ((rendererId === "grid.v1" || rendererId === "card_grid.v1") && (!inRange(rendererConfig.rows, 2, rendererId === "grid.v1" ? 12 : 6) || !inRange(rendererConfig.columns, 2, rendererId === "grid.v1" ? 12 : 6))) errors.push("Grid renderer rows and columns are outside catalog limits.");
   if (rendererId === "lanes.v1" && !inRange(rendererConfig.lanes, 2, 6)) errors.push("Lane count must be between 2 and 6.");
@@ -96,6 +102,7 @@ export function validateGameDefinitionV2(value: unknown): { valid: true; value: 
     entityIds.add(entity.id);
     if (typeof entity.type !== "string" || typeof entity.label !== "string" || !isObject(entity.content) || !["emoji", "text", "asset"].includes(String(entity.content.kind)) || typeof entity.content.value !== "string") errors.push(`entities[${index}] has invalid display content.`);
     if (!isObject(entity.state) || !Object.entries(entity.state).every(([key, item]) => isId(key) && isValue(item))) errors.push(`entities[${index}].state is invalid.`);
+    if (isObject(entity.content) && entity.content.stateKey !== undefined && (!isId(entity.content.stateKey) || !isObject(entity.state) || !(String(entity.content.stateKey) in entity.state))) errors.push(`entities[${index}].content.stateKey must reference initialized entity state.`);
     if (!Array.isArray(entity.behaviours) || !entity.behaviours.every((item) => isObject(item) && typeof item.id === "string" && item.id in behaviourCatalog)) errors.push(`entities[${index}].behaviours is invalid.`);
     if (entity.position !== undefined && (!isObject(entity.position) || !inRange(entity.position.x, 0, 100) || !inRange(entity.position.y, 0, 100))) errors.push(`entities[${index}].position must be within the stage.`);
     if (entity.grid !== undefined && (!isObject(entity.grid) || !inRange(entity.grid.row, 1, 12) || !inRange(entity.grid.column, 1, 12))) errors.push(`entities[${index}].grid is invalid.`);

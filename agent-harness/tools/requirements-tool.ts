@@ -36,7 +36,7 @@ export const requirementsTool: DesignTool = {
               titleHint: { type: "string" },
               genre: { type: "string" },
               objective: { type: "string" },
-              playerCount: { type: "integer", const: 1 },
+              playerCount: { type: "integer", minimum: 1, maximum: 32 },
               referenceGames: { type: "array", items: { type: "string" } },
             },
             required: ["titleHint", "genre", "objective", "playerCount", "referenceGames"],
@@ -70,7 +70,7 @@ export const requirementsTool: DesignTool = {
   },
   execute(input, context) {
     if (!isObject(input)) return { ok: false, errors: ["requirements_tool expects a requirements object."] };
-    const validation = validateGameRequirements(input.requirements, context.creatorPrompt);
+    const validation = validateGameRequirements(input.requirements, context.creatorPrompt, context.mode);
     if (!validation.valid) return { ok: false, errors: validation.errors };
     return { ok: true, value: registerGameRequirements(validation.value) };
   },

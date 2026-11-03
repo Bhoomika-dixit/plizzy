@@ -33,6 +33,7 @@ export type RegisteredRequirements = {
 };
 
 export type DesignToolContext = {
+  mode?: "single_player" | "multiplayer";
   creatorPrompt: string;
   registeredRequirements?: RegisteredRequirements;
 };

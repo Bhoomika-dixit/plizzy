@@ -25,7 +25,7 @@ export type GameRequirements = {
     titleHint: string;
     genre: string;
     objective: string;
-    playerCount: 1;
+    playerCount: number;
     referenceGames: string[];
   };
   entities: Array<{ id: string; role: string; description: string }>;
@@ -44,14 +44,14 @@ function normalizedExcerpt(value: string) {
   return value.toLocaleLowerCase().replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
 }
 
-export function validateGameRequirements(value: unknown, creatorPrompt: string): { valid: true; value: GameRequirements } | { valid: false; errors: string[] } {
+export function validateGameRequirements(value: unknown, creatorPrompt: string, mode: "single_player" | "multiplayer" = "single_player"): { valid: true; value: GameRequirements } | { valid: false; errors: string[] } {
   if (!isObject(value)) return { valid: false, errors: ["requirements must be an object."] };
   const errors: string[] = [];
   if (value.schemaVersion !== 1) errors.push("requirements.schemaVersion must be 1.");
 
   const concept = isObject(value.concept) ? value.concept : {};
   if (![concept.titleHint, concept.genre, concept.objective].every((item) => typeof item === "string" && item.trim().length > 0)) errors.push("requirements.concept needs titleHint, genre, and objective.");
-  if (concept.playerCount !== 1) errors.push("requirements.concept.playerCount must be 1 for the current single-player system.");
+  if (mode === "single_player" ? concept.playerCount !== 1 : !Number.isInteger(concept.playerCount) || Number(concept.playerCount) < 2 || Number(concept.playerCount) > 32) errors.push("Player count must match the requested mode: one solo player or 2–32 multiplayer slots.");
   if (!Array.isArray(concept.referenceGames) || !concept.referenceGames.every((item) => typeof item === "string")) errors.push("requirements.concept.referenceGames must be a string array.");
 
   const entities = Array.isArray(value.entities) ? value.entities : [];

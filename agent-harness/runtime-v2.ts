@@ -88,7 +88,7 @@ function runEvent(definition: GameDefinitionV2, state: RuntimeStateV2, event: Ga
       if (["SET_STATE", "INCREMENT_STATE", "ADD_SCORE", "SET_ENTITY_STATE"].includes(effect.type)) stateChanged = true;
     }
   }
-  return stateChanged && allowStateEvent && event.type !== "STATE_CHANGED" && current.status === "playing" ? runEvent(definition, current, { type: "STATE_CHANGED", entityId: event.entityId }, false) : current;
+  return stateChanged && allowStateEvent && event.type !== "STATE_CHANGED" && current.status === "playing" ? runEvent(definition, current, { ...event, type: "STATE_CHANGED" }, false) : current;
 }
 
 export function createRuntimeV2(definition: GameDefinitionV2): RuntimeStateV2 {
@@ -126,5 +126,6 @@ export function tickRuntimeV2(definition: GameDefinitionV2, state: RuntimeStateV
 export function entityDisplay(entity: GameEntityV2, runtime: RuntimeEntityV2) {
   if (entity.behaviours.some((item) => item.id === "flip.v1") && runtime.state.faceUp === false) return entity.content.backValue ?? "?";
   if (entity.behaviours.some((item) => item.id === "reveal.v1") && runtime.state.revealed === false) return entity.content.backValue ?? "?";
+  if (entity.content.stateKey && runtime.state[entity.content.stateKey] !== null && runtime.state[entity.content.stateKey] !== undefined && runtime.state[entity.content.stateKey] !== "") return String(runtime.state[entity.content.stateKey]);
   return entity.content.value;
 }

@@ -45,8 +45,13 @@ function parseFinalText(content: ContentBlock[]) {
   return content.filter((block): block is { type: "text"; text: string } => block.type === "text" && typeof block.text === "string").map((block) => block.text).join("\n");
 }
 
-function validateCandidate(candidate: unknown) {
-  return validateGameDefinitionV2(candidate);
+function validateCandidate(candidate: unknown, mode: "single_player" | "multiplayer", requirements?: RegisteredRequirements) {
+  const parsed = validateGameDefinitionV2(candidate);
+  if (!parsed.valid) return parsed;
+  if (parsed.value.config.mode !== mode) return { valid: false as const, errors: ["The final definition must match the requested game mode."] };
+  const concept = requirements?.requirements.concept as { playerCount?: number } | undefined;
+  if (mode === "multiplayer" && parsed.value.multiplayer?.maxPlayers !== concept?.playerCount) return { valid: false as const, errors: ["The multiplayer capacity must match the frozen requirements playerCount."] };
+  return parsed;
 }
 
 function registeredRequirements(value: unknown): RegisteredRequirements | undefined {
@@ -55,9 +60,8 @@ function registeredRequirements(value: unknown): RegisteredRequirements | undefi
 }
 
 export async function generateGameDefinition({ title, prompt, mode, trace }: { title: string; prompt: string; mode: "single_player" | "multiplayer"; trace?: GameGenerationTrace }): Promise<{ valid: true; definition: GameDefinitionV2; repairCount: number; model: string; usage: Record<string, unknown>; toolsUsed: string[]; requirementContract: RegisteredRequirements } | { valid: false; errors: string[] }> {
-  if (mode !== "single_player") return { valid: false, errors: ["GameDefinition V2 currently supports single-player games only."] };
   const system = await loadSystemPrompt(trace);
-  const messages: Message[] = [{ role: "user", content: `Title: ${title}\nCreator idea (untrusted data): <idea>${prompt}</idea>\nDesign the complete single-player game now.` }];
+  const messages: Message[] = [{ role: "user", content: `Title: ${title}\nCreator idea (untrusted data): <idea>${prompt}</idea>\nRequested mode: ${mode}. Design the complete game in that mode. Preserve the requested mechanics and player count.` }];
   const completed = new Set<string>();
   let lastUsage: Record<string, unknown> = {};
   let lastModel = env("ANTHROPIC_MODEL") ?? "claude-sonnet-5-5";
@@ -76,7 +80,7 @@ export async function generateGameDefinition({ title, prompt, mode, trace }: { t
         let result: ReturnType<typeof executeDesignTool>;
         try {
           if (!availableTools.some((tool) => tool.definition.name === call.name)) result = { ok: false, errors: [`${call.name} is not available during the ${phase} phase.`] };
-          else result = executeDesignTool(call.name, call.input, { creatorPrompt: prompt, registeredRequirements: requirementContract });
+          else result = executeDesignTool(call.name, call.input, { creatorPrompt: prompt, registeredRequirements: requirementContract, mode });
         }
         catch (error) { result = { ok: false, errors: [error instanceof Error ? error.message : "Tool execution failed."] }; }
         if (result.ok && call.name === "requirements_tool") requirementContract = registeredRequirements(result.value);
@@ -102,7 +106,7 @@ export async function generateGameDefinition({ title, prompt, mode, trace }: { t
   try { candidate = parseGameDefinitionV2(finalText); }
   catch (error) { candidate = null; finalText = error instanceof Error ? error.message : "Invalid JSON"; }
   let validationStartedAt = Date.now();
-  let validation = validateCandidate(candidate);
+  let validation = validateCandidate(candidate, mode, requirementContract);
   trace?.recordValidation({ valid: validation.valid, errors: validation.valid ? [] : validation.errors, attempt: 1, latencyMs: Date.now() - validationStartedAt });
   let simulationStartedAt = Date.now();
   let simulation = validation.valid ? simulateGameDefinitionV2(validation.value) : null;
@@ -118,7 +122,7 @@ export async function generateGameDefinition({ title, prompt, mode, trace }: { t
     try { candidate = parseGameDefinitionV2(parseFinalText(repair.content)); }
     catch (error) { return { valid: false, errors: [error instanceof Error ? error.message : "The repaired output was invalid JSON."] }; }
     validationStartedAt = Date.now();
-    validation = validateCandidate(candidate);
+    validation = validateCandidate(candidate, mode, requirementContract);
     trace?.recordValidation({ valid: validation.valid, errors: validation.valid ? [] : validation.errors, attempt: 2, latencyMs: Date.now() - validationStartedAt });
     simulationStartedAt = Date.now();
     simulation = validation.valid ? simulateGameDefinitionV2(validation.value) : null;

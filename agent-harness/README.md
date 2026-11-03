@@ -20,6 +20,6 @@ Generation is represented in Langfuse as one chain containing catalogue tool cal
 
 ## Compatibility
 
-New single-player games use V2. The player still validates and executes existing V1 tap games through the legacy runtime. Multiplayer generation is intentionally paused until the single-player capability model is stable.
+Solo and multiplayer generation both use V2, the same requirements-first agent, and the same six implementation tools. Multiplayer definitions additionally contain a validated session contract; see [multiplayer architecture](../docs/MULTIPLAYER.md). Legacy solo V1 games still use their original runtime. Previously generated multiplayer versions without a contract must be regenerated; the runtime does not infer or silently rewrite their rules.
 
 If Anthropic reports that an organisation-level API key is not scoped to a workspace, set `ANTHROPIC_WORKSPACE_ID` on the server. A workspace-scoped key does not need this variable.

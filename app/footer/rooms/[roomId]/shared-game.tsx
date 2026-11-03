@@ -2,14 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameDefinitionV2 } from "@/agent-harness/game-definition-v2";
-import type { GameEventV2, RuntimeStateV2 } from "@/agent-harness/runtime-v2";
+import type { RuntimeStateV2 } from "@/agent-harness/runtime-v2";
+import SideScroller, { type SimulationState } from "@/catalogue/renderers/side-scroller";
 import { GenericV2Game } from "@/app/play/[gameId]/playground";
-import { multiplayerRequest } from "@/lib/multiplayer/client";
+import { multiplayerRequest, MultiplayerRequestError } from "@/lib/multiplayer/client";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { isTicTacToe } from "@/lib/multiplayer/tic-tac-toe";
+import { isSession, playerBoard, projectPhysicsBoard, PHYSICS_INPUT_WINDOW_MS, type MultiplayerInput, type SessionState } from "@/agent-harness/multiplayer-runtime";
 import styles from "../rooms.module.css";
 
-type Snapshot = { round: { room_id: string; revision: number; game_version_id: string; state: RuntimeStateV2 } | null; definition?: GameDefinitionV2; host: boolean; userId: string };
+type Snapshot = { round: { room_id: string; revision: number; game_version_id: string; state: RuntimeStateV2 } | null; definition?: GameDefinitionV2; host: boolean; userId: string; serverNow?: number; clockOffset?: number };
 
 export default function SharedGame({ roomId, versionId, title }: { roomId: string; versionId?: string; title: string }) {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -18,18 +19,28 @@ export default function SharedGame({ roomId, versionId, title }: { roomId: strin
   const [connected, setConnected] = useState(false);
   const live = useRef(false);
   const queue = useRef(Promise.resolve());
+  const syncing = useRef<Promise<void> | null>(null);
+  const physicsWrites = useRef(0);
   const current = useRef<Snapshot | null>(null);
-  const request = useCallback((action: string, event?: GameEventV2) => {
-    queue.current = queue.current.then(async () => {
+  const request = useCallback((action: string, event?: MultiplayerInput) => {
+    const run = async () => {
+      const physicsInput = action === "event" && event?.type === "IMPULSE" && Array.isArray(event.samples);
+      if (physicsInput) physicsWrites.current++;
       if (action !== "sync") setBusy(true);
       try {
         const previous = current.current;
-        const atomicMove = action === "event" && previous?.round?.state.values.engine === "tic_tac_toe.v1";
-        const result = await multiplayerRequest(atomicMove
-          ? { action: "tic_move", roomId, revision: previous.round?.revision, entityId: event?.entityId }
-          : { action, roomId, versionId, revision: previous?.round?.revision, event });
-        const next = atomicMove && previous ? { ...previous, round: result.round } : result as Snapshot;
+        let next: Snapshot;
+        try { next = await multiplayerRequest({ action, roomId, versionId, revision: previous?.round?.revision, event }) as Snapshot; }
+        catch (cause) {
+          if (!(cause instanceof MultiplayerRequestError) || cause.status !== 409) throw cause;
+          const fresh = await multiplayerRequest({ action: "sync", roomId }) as Snapshot;
+          if (action === "event" && previous?.round && fresh.round && (previous.round.game_version_id !== fresh.round.game_version_id || isSession(previous.round.state) && isSession(fresh.round.state) && previous.round.state.session.startedAt !== fresh.round.state.session.startedAt)) throw new Error("A new round started. Choose your move again.");
+          // A conflict guarantees the first write did not commit. Revalidate once
+          // against the latest board; never retry an ambiguous network failure.
+          next = action === "sync" ? fresh : await multiplayerRequest({ action, roomId, versionId, revision: fresh.round?.revision, event }) as Snapshot;
+        }
         if (!current.current?.round || !next.round || next.round.revision >= current.current.round.revision) {
+          next.clockOffset = next.serverNow ? next.serverNow - Date.now() : current.current?.clockOffset;
           current.current = next; setSnapshot(next);
         }
         setError("");
@@ -44,20 +55,29 @@ export default function SharedGame({ roomId, versionId, title }: { roomId: strin
           } catch { /* The subscription and recovery sync will retry after reconnect. */ }
         }
       }
-      finally { setBusy(false); }
-    });
+      finally { if (physicsInput) physicsWrites.current--; setBusy(false); }
+    };
+    // A recovery read must not sit ahead of latency-sensitive input batches.
+    // Concurrent server writes still use compare-and-set and revalidation.
+    if (action === "sync") {
+      if (!syncing.current) syncing.current = run().finally(() => { syncing.current = null; });
+      return syncing.current;
+    }
+    if (action === "event" && event?.type === "IMPULSE" && Array.isArray(event.samples)) return run();
+    queue.current = queue.current.then(run);
     return queue.current;
   }, [roomId, versionId]);
   useEffect(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
-      await request("sync");
-      if (!cancelled) timer = setTimeout(poll, current.current?.round?.state.timerRunning ? 1000 : live.current ? 30000 : 5000);
+      if (!physicsWrites.current) await request("sync");
+      const playing = current.current?.round?.state.status === "playing";
+      if (!cancelled) timer = setTimeout(poll, playing && current.current?.definition?.renderer.id === "side_scroller.v1" ? 200 : playing ? 1000 : live.current ? 30000 : 5000);
     }
     void poll();
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [request]);
+  }, [request, snapshot?.round?.state.status, snapshot?.definition?.renderer.id]);
   useEffect(() => {
     const supabase = getSupabaseClient();
     if (!supabase) return;
@@ -79,7 +99,7 @@ export default function SharedGame({ roomId, versionId, title }: { roomId: strin
     window.addEventListener("online", resume);
     return () => { live.current = false; document.removeEventListener("visibilitychange", resume); window.removeEventListener("online", resume); void supabase.removeChannel(channel); };
   }, [roomId, request]);
-  const dispatch = useCallback((event: GameEventV2) => { void request("event", event); }, [request]);
+  const dispatch = useCallback((event: MultiplayerInput) => request("event", event), [request]);
   const restart = useCallback(() => { void request("start"); }, [request]);
   const round = snapshot?.round;
   return <section className={styles.shared} aria-label="Shared game">
@@ -88,24 +108,65 @@ export default function SharedGame({ roomId, versionId, title }: { roomId: strin
     {!snapshot && <p role="status">Connecting to your room…</p>}
     {snapshot?.host && versionId && <button disabled={busy} onClick={restart}>{round ? "Start a new round" : "Start round"}</button>}
     {snapshot && !round && !snapshot.host && <p role="status">Waiting for the host to start…</p>}
-    {round && snapshot?.definition && (isTicTacToe(snapshot.definition)
-      ? <TicTacToe definition={snapshot.definition} state={round.state} userId={snapshot.userId} busy={busy} onMove={(entityId) => dispatch({ type: "ENTITY_TAPPED", entityId })} />
-      : <fieldset disabled={busy} className={styles.sharedBoard}><GenericV2Game key={round.game_version_id} gameId={round.game_version_id} title={snapshot.definition.metadata.title || title} definition={snapshot.definition} shared={{ state: round.state, dispatch, restart: snapshot.host ? restart : () => setError("Only the host can start a new round.") }} /></fieldset>)}
+    {round && snapshot?.definition && (isSession(round.state)
+      ? <SessionGame definition={snapshot.definition} state={round.state} userId={snapshot.userId} busy={busy} clockOffset={snapshot.clockOffset ?? 0} title={title} dispatch={dispatch} restart={snapshot.host ? restart : () => setError("Only the host can restart.")} />
+      : <p>This older round needs a new multiplayer contract. Regenerate the game and start a new round.</p>)}
   </section>;
 }
 
-function TicTacToe({ definition, state, userId, busy, onMove }: { definition: GameDefinitionV2; state: RuntimeStateV2; userId: string; busy: boolean; onMove(id: string): void }) {
-  if (state.values.engine !== "tic_tac_toe.v1") return <p>Ask the host to start a new round to play the updated X/O game.</p>;
-  const mark = state.values.playerX === userId ? "X" : state.values.playerO === userId ? "O" : null;
-  const myTurn = mark === state.values.turn && state.status === "playing";
-  const winner = state.values.winner;
-  const cells = definition.entities.filter((entity) => entity.grid).sort((a, b) => (a.grid!.row - b.grid!.row) * 3 + a.grid!.column - b.grid!.column);
-  return <div className={styles.ticGame}>
-    <h3>Tic-tac-toe</h3><p>{mark ? `You are ${mark}` : "You are watching this round"} · Host is X, first joined friend is O</p>
-    <p role="status">{winner === "draw" ? "It's a draw!" : winner ? `${winner} wins!` : busy ? "Sending move…" : myTurn ? `Your turn — place ${mark}` : `${state.values.turn}'s turn`}</p>
-    <div className={styles.ticBoard} role="group" aria-label="Tic-tac-toe board">{cells.map((cell, index) => {
-      const value = state.entities[cell.id]?.state.mark;
-      return <button key={cell.id} type="button" disabled={busy || !myTurn || Boolean(value)} aria-label={`Row ${Math.floor(index / 3) + 1}, column ${index % 3 + 1}: ${value || "empty"}`} onClick={() => onMove(cell.id)}>{value || ""}</button>;
-    })}</div>
+function SessionGame({ definition, state, userId, busy, clockOffset, title, dispatch, restart }: { definition: GameDefinitionV2; state: SessionState; userId: string; busy: boolean; clockOffset: number; title: string; dispatch(event: MultiplayerInput): Promise<void>; restart(): void }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 250); return () => window.clearInterval(timer); }, []);
+  const index = state.session.players.findIndex(player => player.id === userId);
+  const remaining = Math.max(0, Math.ceil((state.session.startedAt - now - clockOffset) / 1000));
+  const disabled = busy || remaining > 0 || index < 0 || state.status !== "playing" || definition.multiplayer?.turns === "round_robin" && index !== state.session.turn;
+  const board = playerBoard(definition, state, userId);
+  const winners = state.session.players.filter(player => state.session.winners.includes(player.id)).map(player => player.symbol).join(", ");
+  const result = state.session.winners.length > 1 && definition.multiplayer?.objective === "competitive" ? `Round tied · ${winners}` : winners ? `Round complete · ${winners} won` : "Round complete · no winner";
+  return <div>
+    <p role="status">{remaining ? `Starting in ${remaining}…` : state.status === "finished" ? result : index < 0 ? "Watching this round" : definition.multiplayer?.turns === "round_robin" ? `${state.session.players[state.session.turn].symbol}'s turn · You are ${state.session.players[index].symbol}` : `Playing as ${state.session.players[index].symbol}`}</p>
+    <ol aria-label="Player scores">{state.session.players.map(player => <li key={player.id}>{player.symbol}{player.id === userId ? " (you)" : ""}: {player.score}{player.outcome ? ` · ${definition.multiplayer?.board === "individual" ? "finished" : player.outcome}` : ""}</li>)}</ol>
+    {state.status === "finished" ? <p>The round is complete. The host can start another round.</p> : definition.multiplayer?.board === "individual" && board.status === "finished" ? <p>Your board is complete. Waiting for the other players to finish…</p> : definition.renderer.id === "side_scroller.v1"
+      ? <PhysicsBoard key={`${state.session.startedAt}:${userId}`} definition={definition} state={state} userId={index < 0 ? state.session.players[0].id : userId} clockOffset={clockOffset} disabled={remaining > 0 || index < 0 || board.status !== "playing"} dispatch={dispatch} />
+      : <fieldset disabled={disabled} className={styles.sharedBoard}><GenericV2Game key={state.session.startedAt} gameId="session" title={definition.metadata.title || title} definition={definition} shared={{ state: board, dispatch, restart, disabled }} /></fieldset>}
   </div>;
+}
+
+function PhysicsBoard({ definition, state, userId, disabled, clockOffset, dispatch }: { definition: GameDefinitionV2; state: SessionState; userId: string; disabled: boolean; clockOffset: number; dispatch(event: MultiplayerInput): Promise<void> }) {
+  const [controlled, setControlled] = useState<SimulationState>();
+  const localInputs = useRef<number[]>([]);
+  const unsent = useRef<number[]>([]);
+  const sending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const flush = useCallback(async () => {
+    if (sending.current) return;
+    sending.current = true;
+    try {
+      while (mounted.current && unsent.current.length) {
+        const samples = unsent.current.splice(0, 16);
+        await dispatch({ type: "IMPULSE", samples });
+      }
+    } finally { sending.current = false; }
+  }, [dispatch]);
+  useEffect(() => {
+    let frame = 0;
+    const render = () => {
+      localInputs.current = localInputs.current.filter(at => at > state.session.clock);
+      const target = Math.max(state.session.clock, Math.min(Date.now() + clockOffset, state.session.clock + PHYSICS_INPUT_WINDOW_MS + 1000));
+      const { physics, board } = projectPhysicsBoard(definition, state, userId, target, localInputs.current);
+      setControlled({ playerY: physics.y, velocityY: physics.velocity, obstacles: physics.obstacles, seed: physics.seed, nextObstacleId: physics.nextId, elapsed: physics.elapsed, sinceSpawn: physics.sinceSpawn, score: Number(board.values.score ?? 0), secondsRemaining: board.secondsRemaining, status: board.status, outcome: board.outcome, resultTextKey: board.resultTextKey });
+      frame = requestAnimationFrame(render);
+    };
+    frame = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(frame);
+  }, [definition, state, userId, clockOffset]);
+  if (!controlled) return <p>Waiting for the server simulation…</p>;
+  return <><p>Score: {controlled.score}{definition.timer ? ` · ${controlled.secondsRemaining}s` : ""}</p><SideScroller definition={definition} onInteraction={() => undefined} onSnapshot={() => undefined}
+    controlled={controlled}
+    onImpulse={() => {
+      const at = Math.round(Date.now() + clockOffset);
+      if (disabled || at - (localInputs.current.at(-1) ?? state.session.lastInputAt?.[userId] ?? 0) < 100 || unsent.current.length >= 16) return false;
+      localInputs.current.push(at); unsent.current.push(at); void flush(); return true;
+    }} /></>;
 }
