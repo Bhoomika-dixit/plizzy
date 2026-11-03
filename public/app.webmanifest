@@ -1,0 +1,15 @@
+{
+  "id": "https://app.plizzy.in/",
+  "name": "Plizzy",
+  "short_name": "Plizzy",
+  "description": "Your imagination, now playable. Create games and play with your people.",
+  "start_url": "https://app.plizzy.in/",
+  "scope": "https://app.plizzy.in/",
+  "display": "standalone",
+  "background_color": "#f8f9fc",
+  "theme_color": "#8061d9",
+  "icons": [
+    { "src": "/icons/plizzy-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/plizzy-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
