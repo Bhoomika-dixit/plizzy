@@ -12,9 +12,3 @@
 .sharedBoard > main { min-height: 0; padding: 0; background: transparent; }
 .sharedBoard > main > section { width: 100%; min-height: 0; border: 0; border-radius: 12px; box-shadow: none; }
 .sharedBoard header { display: none; }
-.ticGame { padding: 16px 0; }
-.ticGame p { font-size: .8rem; color: #53617d; line-height: 1.5; }
-.ticBoard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.ticBoard button { aspect-ratio: 1; background: #f1edff; color: #5545cf; font-size: 2.4rem; font-weight: 900; border: 2px solid #ddd5fa; }
-.ticBoard button:disabled { opacity: 1; cursor: default; }
-.ticBoard button:focus-visible { outline: 3px solid #a980ff; outline-offset: 2px; }

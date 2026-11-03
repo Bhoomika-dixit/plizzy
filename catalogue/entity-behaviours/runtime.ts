@@ -1,6 +1,11 @@
 export type PhysicsBody = { y: number; velocityY: number };
 export type ScrollingObstacle = { id: number; x: number; gapY: number; passed: boolean };
 
+export function sideScrollerConfig(config: Record<string, unknown>) {
+  const number = (key: string, fallback: number, min: number, max: number) => typeof config[key] === "number" && Number.isFinite(config[key]) ? Math.min(max, Math.max(min, config[key] as number)) : fallback;
+  return { gravity: number("gravity", 68, 35, 120), impulse: number("impulse", -31, -60, -15), obstacleSpeed: number("obstacleSpeed", 20, 12, 40), gapSize: number("gapSize", 34, 22, 48), obstacleWidth: number("obstacleWidth", 12, 8, 18), spawnIntervalSeconds: number("spawnIntervalSeconds", 2.15, 1.1, 3), difficultyRate: number("difficultyRate", .025, 0, .15) };
+}
+
 export function stepGravity(body: PhysicsBody, gravity: number, deltaSeconds: number): PhysicsBody {
   const velocityY = body.velocityY + gravity * deltaSeconds;
   return { y: body.y + velocityY * deltaSeconds, velocityY };

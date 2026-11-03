@@ -4,22 +4,22 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GameDefinitionV2 } from "@/agent-harness/game-definition-v2";
 import { resolveAssetVisual, resolveBackground } from "../assets/runtime";
-import { spawnObstacle, stepGravity, stepHorizontalScroll, ScrollingObstacle } from "../entity-behaviours/runtime";
+import { sideScrollerConfig, spawnObstacle, stepGravity, stepHorizontalScroll, ScrollingObstacle } from "../entity-behaviours/runtime";
 import { applyImpulse, isImpulseKey } from "../interactions/runtime";
 import { collidesWithObstacle, difficultySpeed, outsideVerticalBounds, scorePassedObstacles } from "../rules/runtime";
 import { resolveText } from "../text/runtime";
 import styles from "./side-scroller.module.css";
 
 export type SideScrollerSnapshot = { score: number; secondsRemaining: number; status: "playing" | "finished"; outcome?: "win" | "lose"; resultTextKey?: string };
-type SimulationState = SideScrollerSnapshot & { playerY: number; velocityY: number; obstacles: ScrollingObstacle[]; seed: number; nextObstacleId: number; elapsed: number; sinceSpawn: number };
+export type SimulationState = SideScrollerSnapshot & { playerY: number; velocityY: number; obstacles: ScrollingObstacle[]; seed: number; nextObstacleId: number; elapsed: number; sinceSpawn: number };
 
 export type SideScrollerProps = {
+  controlled?: SimulationState;
+  onImpulse?(): boolean;
   definition: GameDefinitionV2;
   onSnapshot(snapshot: SideScrollerSnapshot): void;
   onInteraction(event: { eventType: "IMPULSE"; score: number; secondsRemaining: number }): void;
 };
-
-const numberConfig = (value: unknown, fallback: number, min: number, max: number) => typeof value === "number" && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
 
 function initialState(definition: GameDefinitionV2): SimulationState {
   const first = spawnObstacle([], 1, definition.config.seed);
@@ -27,19 +27,14 @@ function initialState(definition: GameDefinitionV2): SimulationState {
   return { playerY: 50, velocityY: 0, obstacles: second.obstacles, seed: second.seed, nextObstacleId: 3, elapsed: 0, sinceSpawn: 0, score: 0, secondsRemaining: definition.timer?.durationSeconds ?? 0, status: "playing" };
 }
 
-export default function SideScroller({ definition, onSnapshot, onInteraction }: SideScrollerProps) {
+export default function SideScroller({ definition, onSnapshot, onInteraction, controlled, onImpulse }: SideScrollerProps) {
   const config = definition.renderer.config;
-  const gravity = numberConfig(config.gravity, 68, 35, 120);
-  const impulse = numberConfig(config.impulse, -31, -60, -15);
-  const obstacleSpeed = numberConfig(config.obstacleSpeed, 20, 12, 40);
-  const gapSize = numberConfig(config.gapSize, 34, 22, 48);
-  const obstacleWidth = numberConfig(config.obstacleWidth, 12, 8, 18);
-  const spawnInterval = numberConfig(config.spawnIntervalSeconds, 2.15, 1.1, 3);
-  const difficultyRate = numberConfig(config.difficultyRate, .025, 0, .15);
+  const { gravity, impulse, obstacleSpeed, gapSize, obstacleWidth, spawnIntervalSeconds: spawnInterval, difficultyRate } = sideScrollerConfig(config);
   const playerX = 23;
   const playerWidth = 11;
   const playerHeight = 7;
-  const [view, setView] = useState<SimulationState>(() => initialState(definition));
+  const [localView, setView] = useState<SimulationState>(() => initialState(definition));
+  const view = controlled ?? localView;
   const stateRef = useRef<SimulationState>(view);
   const player = definition.entities.find((entity) => entity.tags?.includes("player")) ?? definition.entities[0];
   const obstacle = definition.entities.find((entity) => entity.tags?.includes("obstacle"));
@@ -52,11 +47,15 @@ export default function SideScroller({ definition, onSnapshot, onInteraction }: 
 
   const finish = useCallback((state: SimulationState, outcome: "win" | "lose", resultTextKey: string) => ({ ...state, status: "finished" as const, outcome, resultTextKey, velocityY: 0 }), []);
   const doImpulse = useCallback(() => {
+    if (controlled) {
+      if (controlled.status === "playing") onImpulse?.();
+      return;
+    }
     const current = stateRef.current;
     if (current.status !== "playing") return;
     stateRef.current = { ...current, velocityY: applyImpulse(impulse) };
     onInteraction({ eventType: "IMPULSE", score: current.score, secondsRemaining: current.secondsRemaining });
-  }, [impulse, onInteraction]);
+  }, [impulse, onInteraction, controlled, onImpulse]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (isImpulseKey(event.key)) { event.preventDefault(); doImpulse(); } };
@@ -65,6 +64,7 @@ export default function SideScroller({ definition, onSnapshot, onInteraction }: 
   }, [doImpulse]);
 
   useEffect(() => {
+    if (controlled) return;
     let frame = 0;
     let last = performance.now();
     const step = (now: number) => {
@@ -88,9 +88,9 @@ export default function SideScroller({ definition, onSnapshot, onInteraction }: 
     };
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
-  }, [definition.timer?.durationSeconds, difficultyRate, finish, gapSize, gravity, obstacleSpeed, obstacleWidth, playerHeight, playerWidth, spawnInterval]);
+  }, [definition.timer?.durationSeconds, difficultyRate, finish, gapSize, gravity, obstacleSpeed, obstacleWidth, playerHeight, playerWidth, spawnInterval, controlled]);
 
-  useEffect(() => { onSnapshot({ score: view.score, secondsRemaining: view.secondsRemaining, status: view.status, outcome: view.outcome, resultTextKey: view.resultTextKey }); }, [onSnapshot, view.outcome, view.resultTextKey, view.score, view.secondsRemaining, view.status]);
+  useEffect(() => { if (!controlled) onSnapshot({ score: view.score, secondsRemaining: view.secondsRemaining, status: view.status, outcome: view.outcome, resultTextKey: view.resultTextKey }); }, [controlled, onSnapshot, view.outcome, view.resultTextKey, view.score, view.secondsRemaining, view.status]);
 
   return <div className={styles.stage} style={{ background }} role="application" aria-label={definition.metadata.title} tabIndex={0} onPointerDown={(event) => { event.preventDefault(); doImpulse(); }}>
     <p className={styles.hint}>{resolveText(definition.texts, "sideScroller.tapHint", "Tap, click, Space, or ↑ to fly")}</p>

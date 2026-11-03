@@ -64,10 +64,10 @@ function SideScrollerGame({ title, definition }: { gameId: string; title: string
   </GameFrame>;
 }
 
-export function GenericV2Game({ title, definition, shared }: { gameId: string; title: string; definition: GameDefinitionV2; shared?: { state: RuntimeStateV2; dispatch(event: import("@/agent-harness/runtime-v2").GameEventV2): void; restart(): void } }) {
+export function GenericV2Game({ title, definition, shared }: { gameId: string; title: string; definition: GameDefinitionV2; shared?: { disabled?: boolean; state: RuntimeStateV2; dispatch(event: import("@/agent-harness/runtime-v2").GameEventV2): void; restart(): void } }) {
   const [localRuntime, setRuntime] = useState<RuntimeStateV2>(() => createRuntimeV2(definition));
   const runtime = shared?.state ?? localRuntime;
-  const sendEvent = useCallback((event: import("@/agent-harness/runtime-v2").GameEventV2) => { if (shared) shared.dispatch(event); else setRuntime((current) => dispatchGameEventV2(definition, current, event)); }, [definition, shared]);
+  const sendEvent = useCallback((event: import("@/agent-harness/runtime-v2").GameEventV2) => { if (shared) { if (!shared.disabled) shared.dispatch(event); } else setRuntime((current) => dispatchGameEventV2(definition, current, event)); }, [definition, shared]);
   const [text, setText] = useState("");
   const [dragged, setDragged] = useState<string>();
   const pointerStart = useRef<{ x: number; y: number } | undefined>(undefined);
@@ -120,7 +120,7 @@ export function GenericV2Game({ title, definition, shared }: { gameId: string; t
         {textInteraction && <form className={styles.textInput} onSubmit={submitText}><input value={text} onChange={(event) => setText(event.target.value)} placeholder="Type your answer" aria-label="Your answer" /><button type="submit">Submit</button></form>}
         {directional && <div className={styles.directions} aria-label="Movement controls">{["left", "up", "down", "right"].map((item) => <button type="button" key={item} onClick={() => direction(item)} aria-label={item}>{item === "left" ? "←" : item === "right" ? "→" : item === "up" ? "↑" : "↓"}</button>)}</div>}
       </div>
-      <p className={styles.hint}>{shared ? "Every move contributes to your shared score." : <>Built from {definition.renderer.id} and {definition.interactions.map((item) => item.type).join(", ")}.</>}</p>
+      <p className={styles.hint}>{shared ? "Play by the generated multiplayer rules." : <>Built from {definition.renderer.id} and {definition.interactions.map((item) => item.type).join(", ")}.</>}</p>
     </> : <Result outcome={runtime.outcome ?? "win"} title={definition.texts[runtime.resultTextKey ?? (runtime.outcome === "lose" ? definition.outcomes.lose?.textKey ?? "result.loseTitle" : definition.outcomes.win.textKey)] ?? definition.texts[runtime.outcome === "lose" ? "result.loseTitle" : "result.winTitle"]} score={score} onRestart={() => { if (shared) shared.restart(); else setRuntime(createRuntimeV2(definition)); setText(""); }} />}
   </GameFrame>;
 }
