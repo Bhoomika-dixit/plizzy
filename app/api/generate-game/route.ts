@@ -6,16 +6,11 @@ import { GameMode } from "@/agent-harness/game-definition";
 import { gameRulesMarkdownV2, GameDefinitionV2 } from "@/agent-harness/game-definition-v2";
 import { startGameGenerationTrace } from "@/agent-harness/observability";
 import { materializeGeneratedAssets, saveGeneratedAssetRecords } from "@/agent-harness/generated-asset-materializer";
+import { coverSvg } from "@/agent-harness/cover-svg";
 
 export const runtime = "nodejs";
 
 function env(name: string) { return process.env[name]?.trim(); }
-function coverSvg(title: string, definition: GameDefinitionV2) {
-  const safeTitle = title.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[character] ?? character);
-  const entities = definition.entities.slice(0, 4).map((entity, index) => `<text x="${90 + index * 105}" y="205" font-size="64">${entity.content.kind === "asset" ? "✦" : entity.content.value}</text>`).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420"><defs><linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop stop-color="${definition.visuals.backgroundColor}"/><stop offset="1" stop-color="${definition.visuals.accentColor}"/></linearGradient></defs><rect width="720" height="420" rx="42" fill="url(#bg)"/><circle cx="635" cy="72" r="120" fill="#fff" opacity=".18"/><text x="56" y="84" fill="${definition.visuals.textColor}" font-family="Arial, sans-serif" font-size="23" font-weight="700">PLIZZY ORIGINAL</text><text x="56" y="145" fill="${definition.visuals.textColor}" font-family="Arial, sans-serif" font-size="44" font-weight="800">${safeTitle.slice(0, 28)}</text>${entities}</svg>`;
-}
-
 async function saveCoverAsset(admin: SupabaseClient, gameId: string, versionId: string, title: string, definition: GameDefinitionV2) {
   const bucket = "game-assets"; const path = `games/${gameId}/versions/${versionId}/cover.svg`;
   const { error: bucketError } = await admin.storage.createBucket(bucket, { public: false, fileSizeLimit: "2MB", allowedMimeTypes: ["image/svg+xml"] });
@@ -35,11 +30,34 @@ export async function POST(request: NextRequest) {
   const authClient = createClient(url, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
   const { data: { user } } = await authClient.auth.getUser();
   if (!user) return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
-  const body = await request.json() as { title?: unknown; prompt?: unknown; mode?: unknown };
+  let body: { title?: unknown; prompt?: unknown; mode?: unknown };
+  try {
+    const parsed: unknown = await request.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+    body = parsed;
+  } catch { return NextResponse.json({ error: "Invalid request." }, { status: 400 }); }
   const title = typeof body.title === "string" ? body.title.trim().slice(0, 120) : "";
   const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 500) : "";
   const mode: GameMode | null = body.mode === "single_player" || body.mode === "multiplayer" ? body.mode : null;
   if (!title || !prompt || !mode) return NextResponse.json({ error: "A title, idea, and game mode are required." }, { status: 400 });
+
+  const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  // Reserve atomically before tracing, model calls, or generated-image work.
+  // Fail closed: an unavailable quota store must never allow unmetered spend.
+  let allowance: { allowed: boolean; used: number; resets_at: string } | undefined;
+  try {
+    const { data, error } = await admin.rpc("consume_game_generation", { p_user_id: user.id });
+    if (!error && Array.isArray(data)) allowance = data[0];
+  } catch { /* Return the same safe service error below. */ }
+  if (!allowance || typeof allowance.allowed !== "boolean" || !Number.isInteger(allowance.used) || allowance.used < 1 || allowance.used > 3 || !Number.isFinite(Date.parse(allowance.resets_at))) {
+    return NextResponse.json({ error: "We couldn’t check your daily generation allowance. Please try again shortly." }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
+  if (!allowance.allowed) {
+    return NextResponse.json({ error: "You’ve used your 3 game generations for today. Your allowance resets at midnight UTC.", code: "daily_generation_limit", resetsAt: allowance.resets_at }, {
+      status: 429,
+      headers: { "Cache-Control": "no-store", "Retry-After": String(Math.max(1, Math.ceil((Date.parse(allowance.resets_at) - Date.now()) / 1000))) },
+    });
+  }
 
   const workflowId = randomUUID();
   const trace = startGameGenerationTrace({ workflowId, userId: user.id, title, prompt, mode });
@@ -47,7 +65,6 @@ export async function POST(request: NextRequest) {
     const generated = await generateGameDefinition({ title, prompt, mode, trace });
     trace.completeAgent(generated.valid ? { accepted: true, model: generated.model, repairCount: generated.repairCount, toolsUsed: generated.toolsUsed, requirementId: generated.requirementContract.requirementId, requirementVersion: generated.requirementContract.requirementVersion } : { accepted: false, validationErrors: generated.errors });
     if (!generated.valid) { trace.finish({ workflowId, accepted: false, validationErrors: generated.errors }); return NextResponse.json({ error: "The generated definition was invalid after repair.", validationErrors: generated.errors }, { status: 422 }); }
-    const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
     const gameId = randomUUID();
     const versionId = randomUUID();
     let stageStartedAt = Date.now();
