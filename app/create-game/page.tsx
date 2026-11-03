@@ -9,5 +9,5 @@ export default async function CreateGamePage({ searchParams }: PageProps<"/creat
   const savedGame = mode === "multiplayer" && typeof params.resumeGame === "string" && uuid.test(params.resumeGame) && typeof params.resumeVersion === "string" && uuid.test(params.resumeVersion)
     ? { gameId: params.resumeGame, versionId: params.resumeVersion }
     : undefined;
-  return <GameCreator key={savedGame?.versionId ?? `${mode}:${roomId ?? ""}:${title}`} mode={mode} title={title} roomId={roomId} savedGame={savedGame} />;
+  return <GameCreator key={savedGame?.versionId ?? `${mode}:${roomId ?? ""}:${title}`} mode={mode} title={title} roomId={roomId} savedGame={savedGame} initialIdea={typeof params.idea === "string" ? params.idea.slice(0, 500) : undefined} />;
 }

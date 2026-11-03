@@ -1,0 +1,10 @@
+export const gameIdeas = [
+{title:"Ocean pairs",category:"Puzzles",art:"cards",mode:"single_player",description:"A little memory workout under the sea.",prompt:"Create a 4 by 4 memory matching card game with ocean animals. Flip two cards at a time, keep matched pairs visible, and win when all pairs are found."},
+{title:"Little orbit",category:"Trivia",art:"planet",mode:"multiplayer",description:"Big space questions. Friendly competition.",prompt:"Create a competitive space trivia game for 3 players, with individual simultaneous boards, four choices per question, a 60 second timer, and highest score wins."},
+{title:"Garden dash",category:"Arcade",art:"spark",mode:"single_player",description:"Take a tiny flying leap into a pastel garden.",prompt:"Create a side scroller where I tap to fly through gaps in a pastel garden. Score a point for each gap, lose on collision, and survive for 45 seconds to win."},
+{title:"Clue club",category:"Mystery",art:"puzzle",mode:"multiplayer",description:"Four curious minds. One puzzling case.",prompt:"Create a cooperative detective game for 4 players on a shared scene board. Everyone can inspect public clues to work out which character took the missing cake, then submit a culprit."},
+{title:"Shape shuffle",category:"Puzzles",art:"puzzle",mode:"single_player",description:"Find a happy home for every little shape.",prompt:"Create a drag and drop shape matching puzzle. Match six colorful shapes to their correct labeled targets, add a point for each correct drop, and win when all six are placed."},
+{title:"Grid duel",category:"Strategy",art:"cards",mode:"multiplayer",description:"One small grid. Your next clever move.",prompt:"Create a competitive two player tic tac toe game on a 3 by 3 shared grid. Alternate X and O turns, reject occupied cells, three in a row wins, and a full board is a draw."}
+] as const;
+export type GameIdea = typeof gameIdeas[number];
+export function ideaHref(idea:GameIdea){return "/create-game?mode="+idea.mode+"&title="+encodeURIComponent(idea.title)+"&idea="+encodeURIComponent(idea.prompt);}
