@@ -1,9 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { APP_ORIGIN, MARKETING_ORIGIN } from "./lib/site";
+import { ADMIN_ORIGIN, APP_ORIGIN, MARKETING_ORIGIN } from "./lib/site";
 
 export function proxy(request: NextRequest) {
   // Next.js can use its internal origin in nextUrl; route by the public Host.
   const hostname = (request.headers.get("host") ?? request.nextUrl.host).toLowerCase().replace(/:\d+$/, "").replace(/\.$/, "");
+  const path = request.nextUrl.pathname;
+  const local = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  const adminPath = path === "/admin" || path.startsWith("/admin/");
+  const adminApi = path === "/api/admin" || path.startsWith("/api/admin/");
+  if (hostname === "admin.plizzy.in") {
+    if (path === "/") {
+      const destination = request.nextUrl.clone();
+      destination.pathname = "/admin";
+      return NextResponse.rewrite(destination);
+    }
+    if (path === "/admin") return NextResponse.redirect(new URL("/", ADMIN_ORIGIN), 308);
+    if (adminApi) return NextResponse.next();
+    // The admin origin serves only the dashboard and its read-only API.
+    return new NextResponse(null, { status: 404 });
+  }
+  if (adminApi && !local) return new NextResponse(null, { status: 404 });
+  if (adminPath && !local) return NextResponse.redirect(new URL("/", ADMIN_ORIGIN), 308);
   const marketing = hostname === "plizzy.in" || hostname === "www.plizzy.in";
   if (marketing) {
     if (request.nextUrl.pathname === "/") {
