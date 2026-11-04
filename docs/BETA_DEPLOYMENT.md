@@ -4,6 +4,7 @@
 
 - Landing page: https://plizzy.in (canonical), with https://www.plizzy.in redirecting to it.
 - Application: https://app.plizzy.in. The landing page links to the app, marks Google Play as coming soon, and explains the iPhone Safari Home Screen shortcut.
+- Read-only admin dashboard: https://admin.plizzy.in, restricted to the provisioned OTP superuser `bhoomika@plizzy.in`. See [admin operations](ADMIN_DASHBOARD.md).
 - Vercel team: `bhoomika-dixits-projects`; project `plizzy` (`prj_yTHIdss8m20HOYIDABXI7ZDMz71f`).
 - Supabase organization: `Bhoomika-dixit's Org`; project `prod` (`rmhtmgqxigvrmflicczg`), Mumbai `ap-south-1`.
 - Initial production app source: merged commit `04eac0eb121405569c60cfda40191d279dba77d2` (PR #12). Later releases include the landing/app domain split; inspect the current Vercel deployment for its exact source commit.
@@ -24,6 +25,7 @@ Cloudflare authoritative DNS was updated with Vercel's project-specific recommen
 | A | `@` | `216.198.79.1` | DNS only |
 | A | `@` | `64.29.17.1` | DNS only |
 | CNAME | `app` | `46433eed993300b1.vercel-dns-017.com` | DNS only |
+| CNAME | `admin` | `46433eed993300b1.vercel-dns-017.com` | DNS only |
 | CNAME | `www` | `46433eed993300b1.vercel-dns-017.com` | DNS only |
 
 Root and www TTL is 300 seconds; app uses Auto TTL. Existing email MX, SPF, and DKIM records were preserved. Recheck Vercel's current domain recommendations before future DNS changes; these are this project's values, not universal Vercel records.
@@ -36,7 +38,7 @@ Authentication storage is scoped to the browser origin, so existing users must s
 
 ## Schema and release operations
 
-Use [the empty-project bootstrap](../supabase/bootstrap/README.md) only for a new database. The current `prod` already has the bootstrap and all five incremental migrations applied, including Realtime, quota and restricted publishing.
+Use [the empty-project bootstrap](../supabase/bootstrap/README.md) only for a new database. The current `prod` already has the bootstrap and seven incremental migrations applied, including Realtime, quota, restricted publishing, and admin reporting with the corrected superuser email.
 
 The first deployment was created through the Vercel API from the exact Git commit. Automatic deployments on GitHub pushes are **not configured** because the Vercel GitHub integration is not installed. Connecting the repository requires the owner to authorize that integration. Until then, use the Vercel dashboard or API to create deployments from an explicitly reviewed commit, and select this project and Production target.
 

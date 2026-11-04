@@ -70,6 +70,18 @@ test('untrusted paths cannot select an external redirect origin', () => {
   }
 });
 
+test('admin origin serves only its dashboard and API; other origins cannot serve admin APIs', () => {
+  const root = proxy(new NextRequest('https://admin.plizzy.in/'));
+  assert.equal(new URL(root.headers.get('x-middleware-rewrite')).pathname, '/admin');
+  assert.equal(proxy(new NextRequest('https://admin.plizzy.in/api/admin')).headers.get('x-middleware-next'), '1');
+  for (const path of ['/footer/home', '/api/generate-game', '/welcome']) assert.equal(proxy(new NextRequest('https://admin.plizzy.in' + path)).status, 404);
+  for (const host of ['plizzy.in', 'app.plizzy.in', 'preview.vercel.app']) {
+    assert.equal(proxy(new NextRequest(`https://${host}/api/admin`)).status, 404);
+    assert.equal(proxy(new NextRequest(`https://${host}/admin`)).headers.get('location'), 'https://admin.plizzy.in/');
+  }
+  assert.equal(proxy(new NextRequest('http://localhost:3000/admin')).headers.get('x-middleware-next'), '1');
+});
+
 test('Home Screen manifest starts and stays on the app subdomain', () => {
   const manifest = JSON.parse(fs.readFileSync('public/app.webmanifest', 'utf8'));
   assert.equal(manifest.start_url, sites.APP_ORIGIN + '/');
